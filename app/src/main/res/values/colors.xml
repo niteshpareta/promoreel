@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- StatusPro Brand Colors -->
+    <!-- Primary: Electric Violet — premium, creative, modern -->
+    <color name="brand_primary">#7C4DFF</color>
+    <color name="brand_primary_dark">#5E35B1</color>
+    <color name="brand_primary_light">#B39DDB</color>
+    <color name="brand_primary_container">#2D1B69</color>
+    <color name="on_brand_primary">#FFFFFF</color>
+
+    <!-- Secondary: Coral Orange — energy, warmth, Indian market -->
+    <color name="brand_secondary">#FF6E40</color>
+    <color name="brand_secondary_dark">#E64A19</color>
+    <color name="brand_secondary_light">#FFAB91</color>
+    <color name="brand_secondary_container">#4D1A00</color>
+    <color name="on_brand_secondary">#FFFFFF</color>
+
+    <!-- Success / Export Green -->
+    <color name="brand_success">#00C853</color>
+    <color name="brand_success_container">#003D17</color>
+
+    <!-- Dark Theme Backgrounds -->
+    <color name="bg_dark">#0D0D1A</color>
+    <color name="bg_surface">#1A1A2E</color>
+    <color name="bg_surface_variant">#252540</color>
+    <color name="bg_elevated">#2A2A45</color>
+
+    <!-- Light Theme Backgrounds -->
+    <color name="bg_light">#F5F0FF</color>
+    <color name="bg_surface_light">#FFFFFF</color>
+    <color name="bg_surface_variant_light">#EDE7F6</color>
+
+    <!-- Text -->
+    <color name="text_primary_dark">#FFFFFF</color>
+    <color name="text_secondary_dark">#B0AFCC</color>
+    <color name="text_disabled_dark">#606080</color>
+    <color name="text_primary_light">#0D0D1A</color>
+    <color name="text_secondary_light">#5C5C7A</color>
+
+    <!-- Divider / Border -->
+    <color name="divider_dark">#2E2E4A</color>
+    <color name="divider_light">#E0D9F7</color>
+
+    <!-- Status Bar -->
+    <color name="status_bar_dark">#0D0D1A</color>
+    <color name="status_bar_light">#5E35B1</color>
+
+    <!-- Watermark / Overlay -->
+    <color name="overlay_scrim">#80000000</color>
+    <color name="branding_strip_bg">#CC0D0D1A</color>
+
+    <!-- Pro / Paywall Gold Accent -->
+    <color name="pro_gold">#FFB300</color>
+    <color name="pro_gold_container">#3D2B00</color>
+</resources>

@@ -1,0 +1,84 @@
+name: statuspro
+description: StatusPro — WhatsApp Status Video Maker for Indian small businesses
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.7
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State management (no code-gen variant)
+  flutter_riverpod: ^2.6.1
+
+  # Navigation
+  go_router: ^14.6.2
+
+  # Video / FFmpeg
+  ffmpeg_kit_flutter_new: ^4.1.0
+
+  # Media picking
+  photo_manager: ^3.6.0
+
+  # File handling
+  path_provider: ^2.1.5
+  path: ^1.9.0
+
+  # Sharing
+  share_plus: ^10.1.2
+
+  # Local storage
+  shared_preferences: ^2.3.3
+  sqflite: ^2.4.2
+  sqlite3_flutter_libs: ^0.5.24
+
+  # In-app purchases
+  in_app_purchase: ^3.2.0
+
+  # Ads (free tier)
+  google_mobile_ads: ^5.2.0
+
+  # Image picking (branding logo)
+  image_picker: ^1.1.2
+
+  # Permissions
+  permission_handler: ^11.3.1
+
+  # In-app video playback
+  video_player: ^2.9.2
+
+  # Video thumbnail generation
+  video_thumbnail: ^0.5.3
+
+  # Music preview playback
+  audioplayers: ^6.1.0
+
+  # QR code generation
+  qr_flutter: ^4.1.0
+
+  # Voice-over recording
+  record: ^5.2.0
+
+  # Utilities
+  uuid: ^4.5.1
+  collection: ^1.19.0
+  device_info_plus: ^10.1.2
+
+  cupertino_icons: ^1.0.8
+
+dependency_overrides:
+  record_platform_interface: 1.2.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/motion_styles/
+    - assets/music/
