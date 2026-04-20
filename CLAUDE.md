@@ -1,233 +1,108 @@
-# StatusPro: Status Video Maker
+# CLAUDE.md
 
-**Owner:** Nitesh (BinaryScript) | **Target Launch:** Google Play India (Month 6) → iOS (v2)
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## What This App Is
+## What this app is
 
-StatusPro is an **offline-first** Flutter app that lets small Indian shop owners create professional 30-second vertical videos for WhatsApp Status in under 90 seconds. No AI, no cloud, no templates, no third-party APIs. Everything runs on-device.
+**Offline-first Flutter app for Indian small shop owners** that assembles a sequence of photos / short videos + per-frame captions, price tags, and offer badges into a vertical (or square / landscape) promo video for WhatsApp Status. All rendering happens on-device via FFmpeg. No cloud, no accounts, no stock library.
 
-The primary user is "Rajesh" — a 38-year-old electronics/hardware/jewelry shop owner in a tier-2/3 Indian city (Kota, Jaipur, Indore). He runs his storefront via WhatsApp Business with 400 contacts and posts daily offers, new stock, or greetings. He is non-technical, often one-handed, and values speed over features.
+> **Naming:** `pubspec.yaml` name is `statuspro`, Play Store branding is "StatusPro", but the Flutter app title, DB filename, temp folder, and output directory all say "PromoReel". Treat both as the same product — don't "fix" one to match the other without asking.
 
-## Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Framework | Flutter (Dart) — Android first, iOS later |
-| UI | Flutter widgets + custom painter for canvas preview |
-| Video Processing | `ffmpeg_kit_flutter` (LGPL) |
-| Animated Overlays | `lottie` Flutter package |
-| Local DB | `drift` (SQLite) — branding presets, video history, settings |
-| State Management | Riverpod |
-| Billing (Android) | `in_app_purchase` (Google Play Billing) |
-| Ads (free tier) | `google_mobile_ads` (AdMob) |
-| Crash Reporting | Firebase Crashlytics via `firebase_crashlytics` |
-| File Picking | `photo_manager` or `image_picker` |
-| Share | `share_plus` + `android_intent_plus` for WhatsApp targeting |
-| Fonts | Google Fonts (Noto Sans Devanagari + Latin) |
-
-**Min SDK:** Android 24 (iOS 13+)  
-**Package ID:** `com.binaryscript.statuspro`
-
-## Project Structure
-
-```
-lib/
-├── main.dart
-├── app.dart                    # MaterialApp, theme, routing
-├── core/
-│   ├── theme/                  # StatusPro color tokens, text styles, theme data
-│   ├── router/                 # GoRouter route definitions
-│   ├── l10n/                   # Hindi + English ARB files
-│   └── constants/              # output specs, limits, asset paths
-├── features/
-│   ├── home/                   # Home screen + "New Status Video" CTA
-│   ├── picker/                 # Gallery multi-select (photos + videos)
-│   ├── editor/                 # Canvas preview + motion style picker
-│   ├── text_overlay/           # Headline + subtext input
-│   ├── music/                  # Bundled music library picker
-│   ├── branding/               # One-time branding setup + toggle
-│   ├── export/                 # Render progress + share sheet
-│   ├── paywall/                # Subscription tiers + free trial
-│   └── onboarding/             # First-launch, Hindi-first
-├── engine/
-│   ├── motion_style_engine.dart # FFmpeg filter_complex generator from JSON spec
-│   ├── text_renderer.dart       # Canvas → PNG (crisp Devanagari rendering)
-│   ├── branding_compositor.dart # Bottom strip overlay
-│   ├── audio_mixer.dart         # Music trim + fade
-│   └── media_encoder.dart       # Final H.264 encode via ffmpeg_kit
-├── data/
-│   ├── db/                      # Drift database, DAOs, tables
-│   ├── models/                  # MotionStyle, BrandingPreset, VideoProject
-│   └── repositories/            # BrandingRepository, VideoHistoryRepository
-└── billing/
-    └── billing_manager.dart     # Subscription state, paywall gating
-```
-
-## Brand Identity & Theme
-
-### Color Palette
-
-| Token | Hex | Use |
-|-------|-----|-----|
-| `brandPrimary` | `#7C4DFF` | Electric Violet — CTAs, active states, progress |
-| `brandPrimaryDark` | `#5E35B1` | Pressed/dark variant of primary |
-| `brandSecondary` | `#FF6E40` | Coral Orange — accents, highlights, Pro badge |
-| `brandSecondaryDark` | `#E64A19` | Pressed/dark variant of secondary |
-| `bgDark` | `#0D0D1A` | Main background (dark theme) |
-| `bgSurface` | `#1A1A2E` | Cards, bottom sheets, modal surfaces |
-| `bgElevated` | `#252540` | Elevated cards, selected states |
-| `textPrimary` | `#FFFFFF` | Primary text (dark theme) |
-| `textSecondary` | `#B0AFCC` | Captions, hints, secondary labels |
-| `proGold` | `#FFB300` | Pro/Business tier badges, paywall highlights |
-| `successGreen` | `#00C853` | Export complete, success states |
-
-### Design Principles
-
-- **Dark-first** — premium video editor feel; the dark canvas makes user content pop
-- **One-finger operation** — 48dp+ touch targets everywhere; no precision gestures
-- **Max 3 taps** from home screen to starting an export
-- **Live preview always visible** during editing — user sees the result before rendering
-- **Hindi first** — all UI strings default to Hindi on first launch in India
-
-## Core User Flow (Target: ≤90 seconds)
-
-1. Launch → tap "New Status Video" (1s)
-2. Gallery picker — multi-select up to 10 assets (10s)
-3. Auto-arrange on vertical canvas, optional drag reorder (5s)
-4. Type headline (60 chars) + optional subtext (100 chars), live preview (15s)
-5. Swipe through 12 motion styles, preview updates live (15s)
-6. Tap a music track or "no music" (10s)
-7. Tap "Share to Status" → render (15–30s) → share sheet → WhatsApp (10s)
-
-## Motion Style Engine (12 Styles — Core Technical Asset)
-
-Each style = deterministic FFmpeg `filter_complex` + Lottie overlay spec. Given N assets and M seconds, produces a mathematically consistent premium video. No content templates — styles are motion math only.
-
-| Family | Styles |
-|--------|--------|
-| **Subtle** (jewelry, boutique, wedding) | Slow Zoom, Ken Burns Pan, Soft Crossfade, Elegant Slide |
-| **Energetic** (electronics, sales, offers) | Quick Cut Beat Sync, Bold Slide, Flash Reveal, Grid Pop |
-| **Informational** (real estate, coaching, clinic) | Split Screen Info, Bottom-Third Highlight, Progressive Reveal, Caption Stack |
-
-Engine reads a JSON spec → generates FFmpeg command at runtime.
-
-## Output Specs
-
-| Setting | Value |
-|---------|-------|
-| Resolution | 720×1280 (portrait) |
-| Codec | H.264 |
-| Bitrate | ~2 Mbps |
-| Audio | AAC |
-| Duration | 30 seconds |
-| File size | <16 MB (WhatsApp limit) |
-| Paid 1080p | 1080×1920 portrait |
-
-## Export Performance Targets
-
-| Device | Target |
-|--------|--------|
-| Low (Redmi A2, 2GB RAM) | <60s |
-| Mid (Redmi Note 12, 6GB) | <25s |
-| High (Pixel 7, OnePlus 11) | <12s |
-
-## Monetization Tiers
-
-| Tier | Price | Limits |
-|------|-------|--------|
-| Free | ₹0 (AdMob) | 4 styles, 10 tracks, 720p, watermark, 3 videos/day |
-| Pro Monthly | ₹299/mo | All 12 styles, 50 tracks, 720p, no watermark, 3 branding presets |
-| Pro Yearly | ₹1,999/yr | Same as Pro Monthly |
-| Business | ₹999/mo or ₹7,999/yr | Everything + 1080p + 60s + batch mode + multi-format export |
-
-**Free trial:** 3-day Pro on first install, no credit card required.
-
-**Ad placements (free tier only):**
-- Interstitial after every 3rd export
-- Native ad strip on gallery picker screen
-- No ads during editing flow, rendering, or preview
-
-## Branding Strip
-
-- One-time setup: logo (PNG/JPG), business name, phone, optional address
-- Auto-burned as bottom strip (10% frame height, semi-transparent) on every video
-- Toggle on/off per video
-- Paid: 3 branding presets ("Shop 1", "Shop 2", "Event mode")
-
-## Text Overlay
-
-- Headline: max 60 chars | Subtext: max 100 chars (optional)
-- 8 fonts: 4 Devanagari (Noto Sans Devanagari variants) + 4 Latin
-- Auto-color: text color selected by background brightness for legibility
-- Text animation is part of the chosen motion style — not a separate user choice
-
-## Music Library
-
-- 50 royalty-free tracks bundled as app assets, 30s each, ~6–8 MB total
-- Categories: Upbeat (15), Devotional (10), Festive (10), Calm (10), Sound Effects (5)
-- Licensed once (Artlist / Epidemic Sound) — not streamed
-- User can also pick from device MP3 files
-
-## Localization
-
-- **Hindi is the default** on first launch (locale detection)
-- English available as user setting
-- Use Flutter's `intl` + ARB files: `app_hi.arb`, `app_en.arb`
-- All UI translated: buttons, onboarding, errors, paywall screens
-
-## What We Don't Build (MVP Hard Constraints)
-
-- No timeline editor, keyframes, multi-layer editing
-- No stock photo/video library, sticker packs, GIF overlays, filters
-- No cloud sync, user accounts, login
-- No social/community features
-- No analytics integration with WhatsApp Business
-- No scheduled posting
-- No languages beyond Hindi + English in MVP
-
-## Build & Run
+## Commands
 
 ```bash
-# Get dependencies
-flutter pub get
-
-# Run on device/emulator
-flutter run
-
-# Build Android APK
-flutter build apk --release
-
-# Build Android App Bundle (Play Store)
-flutter build appbundle --release
-
-# Build iOS (when ready)
-flutter build ios --release
+flutter pub get                      # dependencies
+flutter run                          # run on connected device / emulator
+flutter analyze                      # lint (uses flutter_lints via analysis_options.yaml)
+flutter test                         # run all tests
+flutter test test/widget_test.dart   # run a single test file
+flutter build apk --release          # Android APK
+flutter build appbundle --release    # Play Store AAB
 ```
 
-Requires Flutter 3.x stable. For `ffmpeg_kit_flutter`, use the LGPL variant.
+Dart SDK: `^3.10.7`. Flutter 3.x stable. Requires `ffmpeg_kit_flutter_new` (the actively-maintained fork of the archived `ffmpeg_kit_flutter`).
 
-## Key Files
+## Architecture — the part worth reading before editing
+
+### The export pipeline is the whole app
+
+`MediaEncoder.export()` in `lib/engine/media_encoder.dart` is the core. Every feature is plumbing that feeds a `VideoProject` into this function. The pipeline (in order):
+
+1. **Resolve assets** — each slide in `project.assetPaths` is either a real file path, the sentinel `kTextSlide` (`__text__`), or a before/after split path (`__ba__:leftPath|rightPath`). `isVideoFlags` is derived from extension.
+2. **Pre-composite stills on a Flutter canvas → PNG** (`_compositeImage`, `_compositeTextSlide`, `_compositeBeforeAfter`). This is the key perf move: instead of asking FFmpeg to blur-background+letterbox every still, Flutter paints each still to an exact `outW×outH` PNG with a blurred-cover background (or black for portraits, gradient for text slides). FFmpeg then just `fps=30,format=yuv420p`s them — no split/blur/scale/overlay cost.
+3. **Render text overlays in parallel** — `TextRenderer.renderToFile` paints each frame's caption + price + MRP + offer badge to a transparent 720×1280 PNG. One PNG per frame that has any text.
+4. **Render decorators as PNGs** — branding strip (`BrandingCompositor`), countdown banner (`_renderCountdown`), QR code (`_renderQr`, via `qr_flutter`), watermark (`_renderWatermark`). All are full-frame transparent PNGs positioned by drawing into the canvas at the right coords, not by ffmpeg x/y math.
+5. **Extract music from bundle** — asset mp3s must be copied from `rootBundle` to a temp file before FFmpeg can read them. `frameVoiceovers` are already file paths (recorded via `record` package).
+6. **`MotionStyleEngine.build(...)` generates the ffmpeg command string.** It is NOT 12 custom filter graphs — it's a single parameterized builder that picks an xfade `transition=` + `duration=` per `MotionStyleId` (see `_specs` map). All 12 "motion styles" currently differ only in those two values. If real per-style geometry is needed, that's where it goes.
+7. **`FFmpegKit.executeAsync`** runs it with progress callbacks, then `VideoThumbnail.thumbnailFile` + `VideoHistoryService.insert` persist the result.
+
+**Invariant:** the xfade chain assumes each input's trimmed length is `frameDuration + trans` (except the last). If you change how durations are computed, update both the `-t` for the input AND the `offset=` on the xfade filter — they're coupled at `MotionStyleEngine.build` lines ~75–165.
+
+**Invariant:** voice-over audio timing subtracts `(frameIdx - 1) * trans` because xfade compresses the absolute timeline — each transition after the first shaves `trans` seconds off every downstream frame's start. See `activeVoiceovers` correction logic.
+
+### State model — per-frame parallel arrays
+
+`VideoProject` (`lib/data/models/video_project.dart`) holds the whole editor state as **parallel arrays indexed by slide position**: `assetPaths`, `frameCaptions`, `framePriceTags`, `frameMrpTags`, `frameOfferBadges`, `frameDurations`, `frameTextPositions`, `frameBadgeSizes`, `frameVoiceovers`. Structural mutations (`removeFrame`, `duplicateFrame`, `reorderFrames`, `_insertSlide`) must mutate **all** arrays together — `_rebuild` exists to make that obvious. `copyWith` uses a `_sentinel` for nullable fields (`qrData`, `countdownText`) so callers can distinguish "leave unchanged" from "set to null".
+
+Two sentinel path formats live in `assetPaths`:
+- `kTextSlide = '__text__'` — renders a gradient background
+- `kBeforeAfterPrefix = '__ba__:'` followed by `leftPath|rightPath` — renders a split-screen composite
+
+Both are handled in `MediaEncoder._compositeImage`/`_compositeTextSlide`/`_compositeBeforeAfter`, not by FFmpeg.
+
+### State management
+
+Riverpod (plain `flutter_riverpod` — no code-gen). Providers live in `lib/providers/`:
+- `projectProvider` — the single active `VideoProject?` being edited. `ProjectNotifier` has one mutator per field; prefer these over manual `copyWith` in UI.
+- `subscriptionProvider` — **defaults to `SubscriptionTier.business` in dev** so all paywalled features are unlocked. Before shipping, change `SubscriptionNotifier()` initial state to `SubscriptionTier.free` and wire it to real `in_app_purchase` state.
+- `draftsProvider`, `historyProvider`, `brandingProvider` — sqflite-backed, see below.
+
+### Persistence
+
+**One SQLite file, `promorreel_history.db`** (note: triple "r" typo is intentional and baked in — don't rename it without a migration). Two tables:
+- `videos` — export history (used on home screen).
+- `drafts` — in-progress `VideoProject` serialized as `project_json`.
+
+Managed by `DraftService` and `VideoHistoryService` directly (raw sqflite, no ORM). Branding presets live in `shared_preferences` via `BrandingService`.
+
+### Routing
+
+`GoRouter` in `lib/core/router/app_router.dart`. `buildRouter(showOnboarding:)` is called once from `PromoReelApp`; `showOnboarding` is determined in `main.dart` from a `SharedPreferences` flag (`onboarding_seen`). All routes are flat (no nested shells).
+
+The full wizard flow: `/picker → /caption-wizard → /style-picker → /review → /export`. `/editor` is a standalone entry for editing a loaded draft. `/paywall?tier=pro|business` is opened from any gated CTA. `/player?path=...` plays an exported mp4.
+
+### Subscription gating
+
+`SubscriptionTierX` extension in `subscription_provider.dart` is the single source of truth for what each tier unlocks (`has1080p`, `hasQrCode`, `hasBeatSync`, `maxMotionStyles`, etc.). UI should read capability flags from the tier, not check `tier == SubscriptionTier.business` directly, so gating rules stay in one place.
+
+`MotionStyle.all[i].isPro` marks free vs pro styles — free tier currently has 4 styles (first 2 of subtle + first 2 of energetic family); the rest require Pro.
+
+## Key files
 
 | File | Purpose |
 |------|---------|
-| `lib/core/theme/app_theme.dart` | ThemeData, color tokens, text styles |
-| `lib/engine/motion_style_engine.dart` | Core: JSON spec → FFmpeg command |
-| `lib/features/editor/editor_screen.dart` | Main editing screen + live preview |
-| `lib/features/export/export_screen.dart` | Render progress + share |
-| `lib/data/db/app_database.dart` | Drift DB setup |
-| `lib/billing/billing_manager.dart` | Subscription state + paywall gating |
-| `assets/motion_styles/styles.json` | Motion style specs |
-| `assets/music/` | 50 bundled royalty-free tracks |
+| `lib/engine/media_encoder.dart` | Top-level export orchestrator. Read this first. |
+| `lib/engine/motion_style_engine.dart` | FFmpeg command builder. All xfade / overlay math. |
+| `lib/engine/text_renderer.dart` | Per-frame caption/price/badge PNG rasterizer. |
+| `lib/engine/branding_compositor.dart` | Bottom-strip branding PNG. |
+| `lib/engine/beat_sync_engine.dart` | BPM → per-slide duration allocator. |
+| `lib/data/models/video_project.dart` | Per-frame parallel-array state model + sentinels. |
+| `lib/data/services/draft_service.dart` | sqflite drafts + schema. |
+| `lib/providers/subscription_provider.dart` | Tier capability flags (single source for gating). |
+| `lib/core/constants/app_constants.dart` | Output dimensions, limits, asset paths. |
+| `assets/music/` | 40 bundled MP3s loaded via `rootBundle`. |
 
-## Play Store Identity
+## Conventions that are not obvious from the code
 
-- **App name:** StatusPro: Status Video Maker
-- **Package:** `com.binaryscript.statuspro`
-- **Short description:** "Make WhatsApp Status videos for your shop, daily offers & promos in 60s."
-- **Target keywords:** WhatsApp status video maker, business status video, offer video maker, dukaan status
+- **FFmpeg commands are logged to stdout** (`print('[MediaEncoder] command: $command')`). When debugging an export failure, the command string is what you want — `session.getOutput()` is also printed on non-zero return codes.
+- **Temp dir is `promorreel_render`** under `getTemporaryDirectory()`; export output goes to `Movies/PromoReel` on external storage (falls back to app documents). The Android-data path stripping in `_outputDir` is intentional — it escapes the app sandbox so the Gallery picks up the file.
+- **`audioplayers` is for in-app music preview only.** Final video audio goes through FFmpeg.
+- **`dependency_overrides` pins `record_platform_interface: 1.2.0`** — the `record` package's own constraint is broken on current Flutter, so don't remove the override without verifying voice-over recording still works.
+- **Orientation is locked to portrait** in `app.dart`'s `MaterialApp.builder` (even though export supports landscape output format — that's a different concern).
 
-## Post-MVP Roadmap
+## What is intentionally NOT in the codebase
 
-- v1.1: +4 motion styles, Poster mode, Portuguese + Bahasa localization, iOS launch
-- v1.2: Batch mode, product catalog mode, Tamil + Telugu UI
-- v2.0: StatusPro suite — Poster, Broadcast, Catalog, Invoice apps
+- No timeline/keyframe editor — editing is per-frame only.
+- No `drift`, no `lottie`, no Google Fonts package, no Firebase — the product brief mentioned these but they were not adopted. Don't add them back without asking.
+- No iOS-specific code yet (Android is the launch target).
+- No Hindi ARB files yet despite the brief — all strings are hardcoded English currently.
