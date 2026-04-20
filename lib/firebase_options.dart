@@ -54,9 +54,10 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyCz218jg1D8YK5kcvQRqm4ydsdc-k2PTkM',
-    appId: '1:384388712925:android:564a4fed4b17a48cc44e34',
+    appId: '1:384388712925:android:14c36032c753ce39c44e34',
     messagingSenderId: '384388712925',
     projectId: 'promoreel-d66fa',
     storageBucket: 'promoreel-d66fa.firebasestorage.app',
   );
+
 }
