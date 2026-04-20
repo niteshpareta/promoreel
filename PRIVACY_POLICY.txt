@@ -1,0 +1,211 @@
+PRIVACY POLICY
+
+App Name: PromoReel
+Package: com.binaryscript.promoreel
+Developer: BinaryScript (Nitesh)
+Contact: nk92.iit@gmail.com
+Effective Date: 20 April 2026
+Last Updated: 20 April 2026
+
+-------------------------------------------------------------------------------
+
+1. INTRODUCTION
+
+This Privacy Policy explains how "PromoReel" ("the App",
+"we", "us", or "our") handles information when you use our mobile application.
+We are committed to protecting your privacy. PromoReel is designed to be an
+offline-first application — your photos, videos, text, and branding content
+never leave your device.
+
+By installing or using the App, you agree to the practices described in this
+Privacy Policy. If you do not agree, please do not use the App.
+
+-------------------------------------------------------------------------------
+
+2. INFORMATION WE DO NOT COLLECT
+
+We want to be very clear about this. PromoReel does NOT:
+
+- Require you to create an account, sign up, or log in.
+- Collect your name, email address, phone number, or physical address.
+- Upload your photos, videos, music, logos, or any media to any server.
+- Store your branding details (business name, logo, phone number, address)
+  anywhere outside your own device.
+- Track your location.
+- Read your contacts, messages, call logs, or calendar.
+- Sell, rent, or share your personal data with third parties for marketing.
+
+All videos you create, all media you select, and all branding presets you
+save are stored locally on your device only.
+
+-------------------------------------------------------------------------------
+
+3. INFORMATION ACCESSED ON YOUR DEVICE
+
+To let you create videos, the App needs access to certain data stored on
+your device. This data stays on your device:
+
+a) Photos and Videos
+   - The App requests permission to read images and videos from your gallery
+     so you can select assets for your Status video.
+   - Only the files you explicitly select are used. We do not scan or upload
+     your gallery.
+
+b) Audio Files (optional)
+   - If you choose to pick music from your device, the App accesses the audio
+     file you select. The App also includes bundled royalty-free music
+     that does not require any permission.
+
+c) Storage
+   - The final rendered video is saved to your device's internal storage or
+     a public folder so you can share it through WhatsApp or other apps.
+
+d) Internet (for ads and crash reports only)
+   - The free tier of the App uses the internet to show ads and send
+     anonymous crash reports (see Section 4).
+
+-------------------------------------------------------------------------------
+
+4. THIRD-PARTY SERVICES
+
+The App integrates a limited set of trusted third-party services. These
+services may collect limited technical data as described below:
+
+a) Google AdMob (google_mobile_ads)
+   - Used only in the free tier to display advertisements.
+   - AdMob may collect device identifiers (such as Advertising ID), IP
+     address, and general usage signals to serve relevant ads.
+   - You can opt out of personalized ads in your device settings
+     ("Reset advertising ID" / "Opt out of Ads Personalization" on Android).
+   - AdMob Privacy Policy: https://policies.google.com/privacy
+
+b) Firebase Crashlytics (firebase_crashlytics)
+   - Collects anonymous crash reports (device model, OS version, stack trace)
+     to help us fix bugs and improve stability.
+   - Crashlytics does not collect personally identifiable information.
+   - Firebase Privacy Policy: https://firebase.google.com/support/privacy
+
+c) Google Play Billing (in_app_purchase)
+   - Used to process Pro and Business subscriptions.
+   - Payment information is handled entirely by Google Play. We never see or
+     store your credit card, UPI, or other payment details.
+   - Google Play Privacy Policy: https://policies.google.com/privacy
+
+Paid subscribers who disable ads will not see any AdMob advertising
+requests from the App.
+
+-------------------------------------------------------------------------------
+
+5. PERMISSIONS WE REQUEST
+
+The App requests only the permissions it needs to function:
+
+- READ_MEDIA_IMAGES / READ_MEDIA_VIDEO / READ_MEDIA_AUDIO
+  (or READ_EXTERNAL_STORAGE on older Android versions):
+  To let you pick photos, videos, and optional music from your gallery.
+
+- INTERNET / ACCESS_NETWORK_STATE:
+  To show ads (free tier) and send anonymous crash reports.
+
+- WRITE_EXTERNAL_STORAGE (where applicable):
+  To save the rendered video on your device.
+
+- BILLING:
+  To process in-app subscriptions via Google Play.
+
+We do NOT request permissions for contacts, SMS, location, microphone,
+camera, phone state, or any other sensitive data.
+
+-------------------------------------------------------------------------------
+
+6. CHILDREN'S PRIVACY
+
+The App is intended for use by small business owners and is not directed at
+children under 13. We do not knowingly collect personal data from children.
+If you believe a child has used the App in a way that collected data,
+please contact us and we will take appropriate action.
+
+-------------------------------------------------------------------------------
+
+7. DATA SECURITY
+
+Because the App is offline-first and stores your content on your own device,
+the security of your data depends largely on the security of your device.
+We recommend keeping your device's operating system updated and using a
+screen lock.
+
+For the limited data sent to AdMob and Firebase Crashlytics, transmission
+is secured via HTTPS.
+
+-------------------------------------------------------------------------------
+
+8. DATA RETENTION AND DELETION
+
+- Local data (videos, branding presets, video history) is retained on your
+  device until you delete it from within the App or uninstall the App.
+- Uninstalling the App will remove the App's local database and cache.
+- Anonymous crash reports held by Firebase follow Google's standard
+  retention policies.
+- You have no account with us, so there is no server-side user data to
+  delete.
+
+-------------------------------------------------------------------------------
+
+9. YOUR RIGHTS
+
+Depending on your jurisdiction (including India's DPDP Act, the EU GDPR,
+and similar laws), you may have rights to:
+
+- Access the personal data processed about you.
+- Request correction or deletion of that data.
+- Opt out of personalized advertising.
+- Withdraw consent for data processing.
+
+Since the App does not collect personal data from you directly, most of
+these rights are satisfied by the fact that no such data exists with us.
+For AdMob and Firebase Crashlytics data, please use the controls provided
+by Google (device settings and Google account settings).
+
+To exercise any rights regarding data we may hold, contact us at
+nk92.iit@gmail.com.
+
+-------------------------------------------------------------------------------
+
+10. INTERNATIONAL USERS
+
+The App is primarily offered in India but may be used worldwide. The
+third-party services (Google AdMob, Firebase, Google Play Billing) may
+process data in countries where Google operates. By using the App, you
+consent to such processing in accordance with those services' policies.
+
+-------------------------------------------------------------------------------
+
+11. CHANGES TO THIS PRIVACY POLICY
+
+We may update this Privacy Policy from time to time. Any changes will be
+reflected by updating the "Last Updated" date at the top of this document.
+Material changes will also be communicated through the App or on the
+Google Play listing. Continued use of the App after changes constitutes
+acceptance of the updated policy.
+
+-------------------------------------------------------------------------------
+
+12. CONTACT US
+
+If you have any questions, concerns, or complaints about this Privacy
+Policy or how your data is handled, please contact:
+
+   BinaryScript (Nitesh)
+   Email: nk92.iit@gmail.com
+   App: PromoReel
+   Package ID: com.binaryscript.promoreel
+
+-------------------------------------------------------------------------------
+
+SUMMARY (Plain Language)
+
+PromoReel works offline. Your photos, videos, text, and business details
+stay on your phone. The free version shows Google AdMob ads and sends
+anonymous crash reports via Firebase. Paid subscribers are billed through
+Google Play. We do not have any account system and do not collect your
+personal information. That's it.

@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.binaryscript.promorreel"
+    namespace = "com.binaryscript.promoreel"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -21,7 +21,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.binaryscript.promorreel"
+        applicationId = "com.binaryscript.promoreel"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = 24 // ffmpeg_kit_flutter requires minimum API 24

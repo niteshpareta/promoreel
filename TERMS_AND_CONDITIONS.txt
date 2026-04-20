@@ -1,0 +1,302 @@
+TERMS AND CONDITIONS
+
+App Name: PromoReel
+Package: com.binaryscript.promoreel
+Developer: BinaryScript (Nitesh)
+Contact: nk92.iit@gmail.com
+Effective Date: 20 April 2026
+Last Updated: 20 April 2026
+
+-------------------------------------------------------------------------------
+
+1. ACCEPTANCE OF TERMS
+
+By downloading, installing, or using the PromoReel mobile application
+("the App", "we", "us", or "our"), you ("you", "user") agree to be bound
+by these Terms and Conditions ("Terms"). If you do not agree with any part
+of these Terms, please do not install or use the App.
+
+These Terms form a legally binding agreement between you and BinaryScript
+(Nitesh), the developer of the App.
+
+-------------------------------------------------------------------------------
+
+2. DESCRIPTION OF SERVICE
+
+PromoReel is an offline-first mobile application that lets users create
+short vertical videos (primarily for WhatsApp Status and similar platforms)
+using their own photos, videos, text, music, and branding. All video
+rendering happens on the user's device. The App offers both a free tier
+(advertisement-supported) and paid subscription tiers ("Pro" and
+"Business") with additional features.
+
+-------------------------------------------------------------------------------
+
+3. ELIGIBILITY
+
+You must be at least 13 years old to use the App. If you are under the
+age of 18 (or the age of majority in your jurisdiction), you may use the
+App only with the consent and supervision of a parent or legal guardian.
+By using the App, you represent that you meet these requirements.
+
+-------------------------------------------------------------------------------
+
+4. LICENSE TO USE THE APP
+
+Subject to these Terms, we grant you a limited, non-exclusive,
+non-transferable, non-sublicensable, revocable license to install and use
+the App on devices you own or control, for your personal or internal
+business use.
+
+You agree NOT to:
+
+- Copy, modify, reverse engineer, decompile, or disassemble the App,
+  except to the extent permitted by applicable law.
+- Rent, lease, sell, redistribute, or sublicense the App.
+- Remove or alter any copyright, trademark, or other proprietary notices.
+- Use the App to create content that is unlawful, infringing, defamatory,
+  obscene, hateful, harassing, or violates the rights of any third party.
+- Attempt to bypass the paywall, advertising, licensing, or any other
+  technical measures included in the App.
+- Use automated tools, bots, or scripts to interact with the App.
+- Use the App in any manner that could damage, disable, or overburden it.
+
+-------------------------------------------------------------------------------
+
+5. USER CONTENT
+
+"User Content" means all photos, videos, music, text, logos, business
+information, and other material you import into, create with, or export
+from the App.
+
+- You retain full ownership of your User Content.
+- Since the App operates offline, your User Content is not uploaded to
+  our servers. We do not access, store, or claim any rights over it.
+- You are solely responsible for your User Content, including ensuring
+  you have the necessary rights and permissions to use any photos,
+  videos, logos, music, names, or trademarks included in videos you
+  create.
+- You must not use the App to create content that infringes copyright,
+  trademarks, publicity rights, privacy rights, or any other rights of
+  any person or entity.
+
+-------------------------------------------------------------------------------
+
+6. BUNDLED MUSIC AND ASSETS
+
+The App includes bundled royalty-free music tracks and other assets
+licensed to us by third-party providers. These assets are licensed to
+you only for use within videos created and exported through the App.
+
+You agree NOT to:
+
+- Extract, copy, or redistribute the bundled music or assets outside of
+  videos exported from the App.
+- Claim ownership of the bundled music or assets.
+- Use the bundled music or assets in any standalone manner.
+
+Videos you export through the App that include the bundled music may be
+shared on WhatsApp, Instagram, Facebook, YouTube, and similar platforms,
+subject to those platforms' own terms.
+
+-------------------------------------------------------------------------------
+
+7. SUBSCRIPTIONS AND PAYMENTS
+
+The App offers paid subscription tiers (Pro Monthly, Pro Yearly, Business
+Monthly, Business Yearly). Subscriptions are processed through Google Play
+Billing.
+
+- Prices, features, and limits of each tier are displayed inside the App
+  before you subscribe.
+- Subscription fees are charged to your Google Play account upon purchase
+  and upon each automatic renewal.
+- Subscriptions automatically renew unless canceled at least 24 hours
+  before the end of the current billing period. You can manage or cancel
+  subscriptions through your Google Play account settings.
+- A free trial (where offered) will automatically convert to a paid
+  subscription at the end of the trial period unless canceled beforehand.
+- Refunds are handled in accordance with Google Play's refund policy. We
+  generally do not provide direct refunds; please contact Google Play
+  support for refund requests. In exceptional cases, you may contact us
+  at nk92.iit@gmail.com.
+- Taxes may apply based on your location and are handled by Google Play.
+
+We reserve the right to change subscription prices, features, and tier
+structures. Price changes will not affect active subscription periods
+already paid for.
+
+-------------------------------------------------------------------------------
+
+8. ADVERTISEMENTS (FREE TIER)
+
+The free tier of the App displays advertisements served by Google AdMob.
+By using the free tier, you agree to the display of such advertisements.
+We are not responsible for the content of third-party advertisements.
+Upgrading to a paid subscription removes advertisements from the App.
+
+-------------------------------------------------------------------------------
+
+9. WATERMARK (FREE TIER)
+
+Videos exported using the free tier may include a PromoReel watermark.
+Paid subscribers can export videos without the watermark. Removing or
+altering the watermark by any means other than subscribing to a paid
+tier is strictly prohibited.
+
+-------------------------------------------------------------------------------
+
+10. DAILY EXPORT LIMITS
+
+The free tier limits the number of videos that can be exported per day.
+These limits are defined inside the App and may change from time to time.
+Paid subscribers are subject to the limits of their respective tiers.
+
+-------------------------------------------------------------------------------
+
+11. INTELLECTUAL PROPERTY
+
+All rights, title, and interest in and to the App — including the source
+code, design, motion style engine, UI, graphics, logos, and bundled
+assets — are owned by BinaryScript (Nitesh) or its licensors and are
+protected by copyright, trademark, and other intellectual property laws.
+
+"PromoReel" and "BinaryScript" are trademarks of the developer. You may
+not use these marks without prior written consent.
+
+-------------------------------------------------------------------------------
+
+12. THIRD-PARTY SERVICES
+
+The App integrates the following third-party services. Your use of the
+App means you also agree to the terms of these services:
+
+- Google Play Billing — for subscription purchases.
+- Google AdMob — for advertisements (free tier only).
+- Firebase Crashlytics — for anonymous crash reporting.
+
+We are not responsible for the availability, accuracy, or conduct of
+these third-party services.
+
+-------------------------------------------------------------------------------
+
+13. PRIVACY
+
+Your use of the App is also governed by our Privacy Policy, which
+explains how data is handled. Please review it carefully. The Privacy
+Policy is incorporated into these Terms by reference.
+
+-------------------------------------------------------------------------------
+
+14. UPDATES AND CHANGES TO THE APP
+
+We may release updates, patches, or new versions of the App at our
+discretion. Some updates may be required for continued use. We may add,
+change, or remove features, motion styles, music tracks, subscription
+tiers, or other functionality at any time without prior notice.
+
+-------------------------------------------------------------------------------
+
+15. DISCLAIMER OF WARRANTIES
+
+THE APP IS PROVIDED "AS IS" AND "AS AVAILABLE", WITHOUT WARRANTIES OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO IMPLIED
+WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE,
+NON-INFRINGEMENT, OR THAT THE APP WILL BE ERROR-FREE, SECURE, OR
+UNINTERRUPTED.
+
+We do not warrant that the App will meet your requirements, that export
+times or video quality will match stated targets on every device, or
+that the App will be compatible with every device or operating system
+version.
+
+-------------------------------------------------------------------------------
+
+16. LIMITATION OF LIABILITY
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL
+BINARYSCRIPT (NITESH) BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL,
+CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR ANY LOSS OF PROFITS, REVENUE,
+DATA, GOODWILL, OR BUSINESS OPPORTUNITIES, ARISING OUT OF OR RELATED
+TO YOUR USE OF OR INABILITY TO USE THE APP.
+
+OUR TOTAL LIABILITY FOR ANY CLAIM ARISING OUT OF OR RELATING TO THESE
+TERMS OR THE APP SHALL NOT EXCEED THE AMOUNT YOU PAID TO US FOR THE APP
+IN THE TWELVE (12) MONTHS IMMEDIATELY PRECEDING THE EVENT GIVING RISE
+TO THE CLAIM, OR INR 500, WHICHEVER IS GREATER.
+
+Some jurisdictions do not allow the exclusion or limitation of certain
+damages, so some of the above limitations may not apply to you.
+
+-------------------------------------------------------------------------------
+
+17. INDEMNIFICATION
+
+You agree to indemnify, defend, and hold harmless BinaryScript (Nitesh)
+and its affiliates, officers, and agents from and against any claims,
+damages, losses, liabilities, costs, and expenses (including reasonable
+attorneys' fees) arising out of or related to:
+
+- Your use or misuse of the App.
+- Your User Content, including any claim that it infringes or violates
+  any third-party right.
+- Your violation of these Terms or any applicable law.
+
+-------------------------------------------------------------------------------
+
+18. TERMINATION
+
+We may suspend or terminate your license to use the App at any time,
+with or without notice, if you violate these Terms or if we discontinue
+the App. You may stop using the App at any time by uninstalling it.
+
+Upon termination:
+
+- All licenses granted to you under these Terms will end.
+- Sections 5, 6, 11, 15, 16, 17, 19, and 20 will survive termination.
+- Active subscriptions will remain subject to Google Play's policies.
+
+-------------------------------------------------------------------------------
+
+19. GOVERNING LAW AND JURISDICTION
+
+These Terms are governed by and construed in accordance with the laws
+of India, without regard to conflict-of-law principles. Any dispute
+arising out of or relating to these Terms or the App shall be subject
+to the exclusive jurisdiction of the courts located in Kota, Rajasthan,
+India, unless otherwise required by applicable consumer protection laws
+of your country of residence.
+
+-------------------------------------------------------------------------------
+
+20. CHANGES TO THESE TERMS
+
+We may update these Terms from time to time. When we make material
+changes, we will update the "Last Updated" date at the top and may
+notify you through the App or on the Google Play listing. Your continued
+use of the App after such changes constitutes acceptance of the updated
+Terms. If you do not agree with the updated Terms, please uninstall the
+App.
+
+-------------------------------------------------------------------------------
+
+21. CONTACT US
+
+For any questions, concerns, or complaints about these Terms, please
+contact:
+
+   BinaryScript (Nitesh)
+   Email: nk92.iit@gmail.com
+   App: PromoReel
+   Package ID: com.binaryscript.promoreel
+
+-------------------------------------------------------------------------------
+
+SUMMARY (Plain Language)
+
+PromoReel is a tool you use to create videos from your own content. You
+own what you make. Don't use the App for anything illegal or infringing.
+The free version shows ads and adds a watermark — paid subscriptions
+remove both. Subscriptions are handled by Google Play. The App is
+provided "as is", and our liability is limited. Indian law governs these
+Terms.

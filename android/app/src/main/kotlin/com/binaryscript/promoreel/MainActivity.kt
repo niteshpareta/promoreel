@@ -1,4 +1,4 @@
-package com.binaryscript.promorreel
+package com.binaryscript.promoreel
 
 import android.content.Intent
 import androidx.core.content.FileProvider
@@ -8,7 +8,7 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
 class MainActivity : FlutterActivity() {
-    private val channel = "com.binaryscript.statuspro/whatsapp"
+    private val channel = "com.binaryscript.promoreel/whatsapp"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)

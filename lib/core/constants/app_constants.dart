@@ -35,5 +35,5 @@ abstract final class AppConstants {
   static const double brandingStripHeightRatio = 0.10; // 10% of frame height
 
   // Export
-  static const String tempFolderName = 'promorreel_temp';
+  static const String tempFolderName = 'promoreel_temp';
 }

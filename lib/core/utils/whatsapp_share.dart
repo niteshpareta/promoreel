@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 
 class WhatsAppShare {
-  static const _channel = MethodChannel('com.binaryscript.statuspro/whatsapp');
+  static const _channel = MethodChannel('com.binaryscript.promoreel/whatsapp');
 
   /// Share video directly to WhatsApp on Android.
   /// Falls back to system share sheet if WhatsApp is not installed.

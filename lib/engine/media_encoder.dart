@@ -37,7 +37,7 @@ class MediaEncoder {
 
   static Future<String> _tempDir() async {
     final base = await getTemporaryDirectory();
-    final dir = Directory(p.join(base.path, 'promorreel_render'));
+    final dir = Directory(p.join(base.path, 'promoreel_render'));
     await dir.create(recursive: true);
     return dir.path;
   }

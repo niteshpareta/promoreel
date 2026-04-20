@@ -32,7 +32,7 @@ class VideoHistoryService {
     if (_db != null) return _db!;
     final dir = await getApplicationDocumentsDirectory();
     _db = await openDatabase(
-      p.join(dir.path, 'promorreel_history.db'),
+      p.join(dir.path, 'promoreel_history.db'),
       version: 2,
       onCreate: (db, _) => db.execute('''
         CREATE TABLE videos (

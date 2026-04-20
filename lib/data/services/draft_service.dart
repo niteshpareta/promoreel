@@ -25,7 +25,7 @@ class DraftService {
     if (_db != null) return _db!;
     final dir = await getApplicationDocumentsDirectory();
     _db = await openDatabase(
-      p.join(dir.path, 'promorreel_history.db'),
+      p.join(dir.path, 'promoreel_history.db'),
       version: 3,
       onCreate: (db, _) async {
         await db.execute('''
