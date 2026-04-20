@@ -50,8 +50,11 @@ local.properties
 /android/**/GeneratedPluginRegistrant.java
 /android/key.properties
 /android/app/google-services.json
+/android/app/release/
 *.jks
 *.keystore
+*.aab
+*.apk
 .externalNativeBuild
 .cxx
 
