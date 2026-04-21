@@ -41,6 +41,8 @@ class VideoProject {
     this.countdownText,
     this.countdownEnabled    = false,
     this.frameVoiceovers     = const [],
+    this.frameBgRemoval      = const [],
+    this.frameBgColor        = const [],
     required this.createdAt,
   });
 
@@ -59,6 +61,8 @@ class VideoProject {
         frameTextPositions: List.filled(assetPaths.length, 'bottom'),
         frameBadgeSizes:    List.filled(assetPaths.length, 'medium'),
         frameVoiceovers:    List.filled(assetPaths.length, null),
+        frameBgRemoval:     List.filled(assetPaths.length, false),
+        frameBgColor:       List.filled(assetPaths.length, 0),
         createdAt: DateTime.now(),
       );
 
@@ -86,6 +90,8 @@ class VideoProject {
         'countdownText':      countdownText,
         'countdownEnabled':   countdownEnabled,
         'frameVoiceovers':    frameVoiceovers,
+        'frameBgRemoval':     frameBgRemoval,
+        'frameBgColor':       frameBgColor,
         'createdAt':          createdAt.millisecondsSinceEpoch,
       };
 
@@ -123,6 +129,10 @@ class VideoProject {
       frameVoiceovers:    (j['frameVoiceovers'] as List?)
           ?.map((e) => e as String?)
           .toList() ?? [],
+      frameBgRemoval:     (j['frameBgRemoval'] as List?)
+          ?.map((e) => e as bool)
+          .toList() ?? [],
+      frameBgColor:       intList('frameBgColor'),
       createdAt: DateTime.fromMillisecondsSinceEpoch(
           (j['createdAt'] as num?)?.toInt() ?? 0),
     );
@@ -154,6 +164,17 @@ class VideoProject {
   final String? countdownText;
   final bool countdownEnabled;
   final List<String?> frameVoiceovers;
+
+  /// Per-frame flag: when true, the frame's photo gets its background removed
+  /// via Google ML Kit Subject Segmentation before rendering. Falls back to
+  /// the original image if segmentation fails. Has no effect on `kTextSlide`
+  /// or before/after composite slides.
+  final List<bool> frameBgRemoval;
+
+  /// Per-frame replacement background colour (ARGB int) used when
+  /// [frameBgRemoval] is true. `0` means "use brand ember" at render time.
+  final List<int> frameBgColor;
+
   final DateTime createdAt;
 
   // ── copyWith ─────────────────────────────────────────────────────────────────
@@ -178,6 +199,8 @@ class VideoProject {
     Object?         countdownText = _sentinel,
     bool?           countdownEnabled,
     List<String?>?  frameVoiceovers,
+    List<bool>?     frameBgRemoval,
+    List<int>?      frameBgColor,
   }) =>
       VideoProject(
         id: id,
@@ -191,6 +214,8 @@ class VideoProject {
         frameTextPositions: frameTextPositions ?? this.frameTextPositions,
         frameBadgeSizes:    frameBadgeSizes    ?? this.frameBadgeSizes,
         frameVoiceovers:    frameVoiceovers    ?? this.frameVoiceovers,
+        frameBgRemoval:     frameBgRemoval     ?? this.frameBgRemoval,
+        frameBgColor:       frameBgColor       ?? this.frameBgColor,
         musicTrackId:       musicTrackId,
         brandingEnabled:    brandingEnabled    ?? this.brandingEnabled,
         brandingPresetId:   brandingPresetId   ?? this.brandingPresetId,
@@ -229,6 +254,8 @@ static const _sentinel = Object();
         countdownText:      countdownText,
         countdownEnabled:   countdownEnabled,
         frameVoiceovers:    frameVoiceovers,
+        frameBgRemoval:     frameBgRemoval,
+        frameBgColor:       frameBgColor,
         createdAt: createdAt,
       );
 
@@ -258,6 +285,24 @@ static const _sentinel = Object();
     return copyWith(frameDurations: list);
   }
 
+  VideoProject withFrameBgRemoval(int i, bool v) {
+    final list = List<bool>.from(_padBgRemoval(assetPaths.length));
+    if (i >= 0 && i < list.length) list[i] = v;
+    return copyWith(frameBgRemoval: list);
+  }
+
+  VideoProject withFrameBgColor(int i, int argb) {
+    final list = List<int>.from(_padBgColor(assetPaths.length));
+    if (i >= 0 && i < list.length) list[i] = argb;
+    return copyWith(frameBgColor: list);
+  }
+
+  bool bgRemovalFor(int i) =>
+      i >= 0 && i < frameBgRemoval.length && frameBgRemoval[i];
+
+  int bgColorFor(int i) =>
+      i >= 0 && i < frameBgColor.length ? frameBgColor[i] : 0;
+
   VideoProject _updateStr(List<String> src, int i, String v,
       VideoProject Function(List<String>) apply) {
     final list = List<String>.from(src);
@@ -277,6 +322,8 @@ static const _sentinel = Object();
     required List<String>  frameTextPositions,
     required List<String>  frameBadgeSizes,
     required List<String?> frameVoiceovers,
+    required List<bool>    frameBgRemoval,
+    required List<int>     frameBgColor,
   }) => VideoProject(
     id: id,
     assetPaths:         assetPaths,
@@ -289,6 +336,8 @@ static const _sentinel = Object();
     frameTextPositions: frameTextPositions,
     frameBadgeSizes:    frameBadgeSizes,
     frameVoiceovers:    frameVoiceovers,
+    frameBgRemoval:     frameBgRemoval,
+    frameBgColor:       frameBgColor,
     musicTrackId:       musicTrackId,
     brandingEnabled:    brandingEnabled,
     brandingPresetId:   brandingPresetId,
@@ -309,6 +358,16 @@ static const _sentinel = Object();
     return [...frameVoiceovers, ...List.filled(targetLen - frameVoiceovers.length, null)];
   }
 
+  List<bool> _padBgRemoval(int targetLen) {
+    if (frameBgRemoval.length >= targetLen) return frameBgRemoval;
+    return [...frameBgRemoval, ...List.filled(targetLen - frameBgRemoval.length, false)];
+  }
+
+  List<int> _padBgColor(int targetLen) {
+    if (frameBgColor.length >= targetLen) return frameBgColor;
+    return [...frameBgColor, ...List.filled(targetLen - frameBgColor.length, 0)];
+  }
+
   VideoProject removeFrame(int index) {
     List<T> without<T>(List<T> src) {
       final list = List<T>.from(src);
@@ -325,6 +384,8 @@ static const _sentinel = Object();
       frameTextPositions: without(frameTextPositions),
       frameBadgeSizes:    without(frameBadgeSizes),
       frameVoiceovers:    without(_padVoiceovers(assetPaths.length)),
+      frameBgRemoval:     without(_padBgRemoval(assetPaths.length)),
+      frameBgColor:       without(_padBgColor(assetPaths.length)),
     );
   }
 
@@ -345,6 +406,8 @@ static const _sentinel = Object();
       frameTextPositions: dup(frameTextPositions,       'bottom'),
       frameBadgeSizes:    dup(frameBadgeSizes,          'medium'),
       frameVoiceovers:    dup(_padVoiceovers(assetPaths.length), null),
+      frameBgRemoval:     dup(_padBgRemoval(assetPaths.length), false),
+      frameBgColor:       dup(_padBgColor(assetPaths.length), 0),
     );
   }
 
@@ -367,6 +430,8 @@ static const _sentinel = Object();
       frameTextPositions: ins(frameTextPositions, textPosition),
       frameBadgeSizes:    ins(frameBadgeSizes,    'medium'),
       frameVoiceovers:    ins(padded,              null),
+      frameBgRemoval:     ins(_padBgRemoval(assetPaths.length), false),
+      frameBgColor:       ins(_padBgColor(assetPaths.length), 0),
     );
   }
 
@@ -395,6 +460,8 @@ static const _sentinel = Object();
       frameTextPositions: moved(frameTextPositions),
       frameBadgeSizes:    moved(frameBadgeSizes),
       frameVoiceovers:    moved(_padVoiceovers(assetPaths.length)),
+      frameBgRemoval:     moved(_padBgRemoval(assetPaths.length)),
+      frameBgColor:       moved(_padBgColor(assetPaths.length)),
     );
   }
 

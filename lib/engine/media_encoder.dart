@@ -10,6 +10,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
+import '../data/services/background_removal_service.dart';
 import '../data/models/branding_preset.dart';
 import '../data/models/export_format.dart';
 import '../data/models/video_project.dart';
@@ -526,6 +527,8 @@ class MediaEncoder {
       //    Text slides → gradient PNG.
       //    Before/after → split-screen PNG.
       //    Portrait images → no blur needed.
+      //    When `frameBgRemoval[i]` is set, first run the image through
+      //    Subject Segmentation to drop the background, then composite.
       final preComposedPaths = List<String?>.filled(resolvedPaths.length, null);
       final compositeTasks   = <Future<void>>[];
 
@@ -534,7 +537,25 @@ class MediaEncoder {
           final outPng = p.join(tmp, 'composed_${i}_$ts.png');
           compositeImagePaths.add(outPng);
           final idx  = i;
-          final path = resolvedPaths[i];
+          String path = resolvedPaths[i];
+
+          // Background removal — only for regular image assets (not text or
+          // before/after). Synchronous in the loop so each frame finishes its
+          // cutout before the composite task spawns.
+          if (path != kTextSlide &&
+              !isBeforeAfterPath(path) &&
+              project.bgRemovalFor(i)) {
+            final argb = project.bgColorFor(i);
+            // 0 means "use the brand ember colour" — ARGB 0xFFF2A848 matches
+            // AppColors.brandEmber. Kept as a literal here so the engine
+            // layer doesn't depend on the UI theme tokens.
+            final bgArgb = argb == 0 ? 0xFFF2A848 : argb;
+            final cutout = await BackgroundRemovalService.processToPath(
+              inputPath: path,
+              backgroundColorArgb: bgArgb,
+            );
+            if (cutout != null) path = cutout;
+          }
 
           Future<String> task;
           if (path == kTextSlide) {

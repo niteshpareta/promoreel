@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../core/constants/app_constants.dart';
 import '../data/models/export_format.dart';
 import '../data/models/motion_style.dart';
 import '../data/models/video_project.dart';
@@ -10,7 +11,7 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
     state = VideoProject.create(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       assetPaths: assetPaths,
-    ).copyWithMusic('upbeat_01');
+    ).copyWithMusic(AppConstants.defaultMusicTrackId);
   }
 
   void loadFrom(VideoProject project) => state = project;
@@ -58,6 +59,16 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
   void setFrameBadgeSize(int index, String size) {
     if (state == null) return;
     state = state!.withFrameBadgeSize(index, size);
+  }
+
+  void setFrameBgRemoval(int index, bool enabled) {
+    if (state == null) return;
+    state = state!.withFrameBgRemoval(index, enabled);
+  }
+
+  void setFrameBgColor(int index, int argb) {
+    if (state == null) return;
+    state = state!.withFrameBgColor(index, argb);
   }
 
   void reorderFrames(int oldIndex, int newIndex) {

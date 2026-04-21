@@ -6,11 +6,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
-import '../../core/router/app_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
+import '../../core/ui/haptics.dart';
+import '../../core/ui/pr_button.dart';
+import '../../core/ui/pr_icons.dart';
+import '../../core/ui/pr_section_header.dart';
+import '../../core/ui/tokens.dart';
+import '../../core/utils/text_position.dart';
 import '../../data/models/video_project.dart';
+import '../../data/services/background_removal_service.dart';
+import '../../features/shared/widgets/no_project_fallback.dart';
 import '../../providers/project_provider.dart';
+import 'text_editor_sheet.dart';
 
 // ── Templates ─────────────────────────────────────────────────────────────────
 
@@ -24,23 +32,23 @@ class _Template {
 }
 
 const _templates = [
-  _Template(Icons.bolt_rounded,           'Flash Sale',  '50% OFF',    2, Color(0xFFFF6E40)),
-  _Template(Icons.auto_awesome_rounded,   'New Arrival', 'NEW',        3, Color(0xFF00C853)),
-  _Template(Icons.currency_rupee_rounded, 'Price Drop',  'SALE',       2, Color(0xFFFFB300)),
-  _Template(Icons.campaign_rounded,       'Today Only',  'TODAY ONLY', 3, Color(0xFF00BCD4)),
-  _Template(Icons.local_fire_department_rounded, 'Hot Deal', 'HOT',    2, Color(0xFFFF3D00)),
-  _Template(Icons.celebration_rounded,   'Festival',    'LIMITED',     3, Color(0xFF7C4DFF)),
+  _Template(Icons.bolt_rounded,           'Flash Sale',  '50% OFF',    2, AppColors.signalCrimson),
+  _Template(Icons.auto_awesome_rounded,   'New Arrival', 'NEW',        3, AppColors.signalLeaf),
+  _Template(Icons.currency_rupee_rounded, 'Price Drop',  'SALE',       2, AppColors.brandEmber),
+  _Template(Icons.campaign_rounded,       'Today Only',  'TODAY ONLY', 3, AppColors.signalSky),
+  _Template(Icons.local_fire_department_rounded, 'Hot Deal', 'HOT',    2, Color(0xFFFF6E40)),
+  _Template(Icons.celebration_rounded,   'Festival',    'LIMITED',     3, AppColors.proAurum),
 ];
 
 // ── Badge options ─────────────────────────────────────────────────────────────
 
 const _badges = [
-  ('SALE',       Color(0xFFFF6E40), Color(0xFF3A1800)),
-  ('NEW',        Color(0xFF00C853), Color(0xFF003318)),
-  ('HOT',        Color(0xFFFF3D00), Color(0xFF3A0A00)),
-  ('50% OFF',    Color(0xFF7C4DFF), Color(0xFF1E0A4A)),
-  ('LIMITED',    Color(0xFFFFB300), Color(0xFF3A2800)),
-  ('TODAY ONLY', Color(0xFF00BCD4), Color(0xFF002A30)),
+  ('SALE',       AppColors.signalCrimson, Color(0xFF4A0F25)),
+  ('NEW',        AppColors.signalLeaf,    Color(0xFF0E3E23)),
+  ('HOT',        Color(0xFFFF6E40),       Color(0xFF3A1A08)),
+  ('50% OFF',    AppColors.brandEmber,    Color(0xFF3D2307)),
+  ('LIMITED',    AppColors.proAurum,      Color(0xFF3D2B00)),
+  ('TODAY ONLY', AppColors.signalSky,     Color(0xFF0C2A4D)),
 ];
 
 const _durations = [2, 3, 5];
@@ -196,6 +204,59 @@ class _CaptionWizardScreenState extends ConsumerState<CaptionWizardScreen> {
     return idx >= 0 && _videoExts.contains(path.substring(idx).toLowerCase());
   }
 
+  /// Open the tap-to-edit bottom sheet for caption / price / MRP. The sheet
+  /// returns `(text, applyToAll)` which we write through the provider, then
+  /// mirror back into the local controllers so the preview rebuilds.
+  Future<void> _openTextEditor({
+    required int index,
+    required PrTextEditorKind kind,
+  }) async {
+    final controller = switch (kind) {
+      PrTextEditorKind.caption => _captionCtrls[index],
+      PrTextEditorKind.price => _priceCtrls[index],
+      PrTextEditorKind.mrp => _mrpCtrls[index],
+    };
+
+    final result = await showPrTextEditor(
+      context,
+      kind: kind,
+      initialText: controller.text,
+      frameIndex: index,
+      totalFrames: _captionCtrls.length,
+    );
+    if (result == null || !mounted) return;
+
+    final text = result.text;
+    controller.text = text;
+    final notifier = ref.read(projectProvider.notifier);
+
+    void applyOne(int i) {
+      switch (kind) {
+        case PrTextEditorKind.caption:
+          _captionCtrls[i].text = text;
+          notifier.setFrameCaption(i, text);
+          break;
+        case PrTextEditorKind.price:
+          _priceCtrls[i].text = text;
+          notifier.setFramePriceTag(i, text);
+          break;
+        case PrTextEditorKind.mrp:
+          _mrpCtrls[i].text = text;
+          notifier.setFrameMrpTag(i, text);
+          break;
+      }
+    }
+
+    if (result.applyToAll) {
+      for (var i = 0; i < _captionCtrls.length; i++) {
+        applyOne(i);
+      }
+    } else {
+      applyOne(index);
+    }
+    setState(() {});
+  }
+
   void _showFullPreview({
     required String path,
     required String caption,
@@ -204,6 +265,8 @@ class _CaptionWizardScreenState extends ConsumerState<CaptionWizardScreen> {
     required String offerBadge,
     required String textPosition,
     required String badgeSize,
+    bool bgRemoval = false,
+    int bgColorArgb = 0,
   }) {
     final isVideo = _isVideoPath(path);
     showDialog(
@@ -239,6 +302,8 @@ class _CaptionWizardScreenState extends ConsumerState<CaptionWizardScreen> {
                         badgeSize: badgeSize,
                         textPosition: textPosition,
                         fullSize: true,
+                        bgRemoval: bgRemoval,
+                        bgColorArgb: bgColorArgb,
                       ),
               ),
             ),
@@ -280,10 +345,7 @@ class _CaptionWizardScreenState extends ConsumerState<CaptionWizardScreen> {
   @override
   Widget build(BuildContext context) {
     final project = ref.watch(projectProvider);
-    if (project == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => context.go(AppRoutes.home));
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
+    if (project == null) return const NoProjectFallback();
 
     final paths = project.assetPaths;
     final total = paths.length;
@@ -292,7 +354,6 @@ class _CaptionWizardScreenState extends ConsumerState<CaptionWizardScreen> {
     final customized = _customizedCount;
 
     return Scaffold(
-      backgroundColor: AppColors.bgDark,
       resizeToAvoidBottomInset: true,
       body: SafeArea(
         child: Column(
@@ -301,38 +362,27 @@ class _CaptionWizardScreenState extends ConsumerState<CaptionWizardScreen> {
 
             // ── Top bar ────────────────────────────────────────────────
             Padding(
-              padding: const EdgeInsets.fromLTRB(4, 8, 16, 0),
+              padding: const EdgeInsets.fromLTRB(
+                  PrSpacing.xs, PrSpacing.xs, PrSpacing.lg, 0),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.arrow_back_rounded),
+                    icon: const Icon(PrIcons.back),
                     onPressed: () => context.pop(),
                   ),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Customize Frames',
-                            style: AppTextStyles.titleLarge
-                                .copyWith(fontWeight: FontWeight.w800)),
-                        Text(
-                          customized == 0
-                              ? 'Caption · Price · Badge · Position · Order'
-                              : '$customized of $total frames customized',
-                          style: AppTextStyles.labelSmall.copyWith(
-                            color: customized > 0
-                                ? AppColors.success
-                                : AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
+                    child: PrSectionHeader(
+                      kicker: 'step 2 of 4',
+                      title: 'Customize frames',
+                      subtitle: customized == 0
+                          ? 'Caption · price · badge · position'
+                          : '$customized of $total customised',
                     ),
                   ),
                   TextButton(
                     onPressed: _done,
-                    child: Text('Skip',
-                        style: AppTextStyles.labelMedium
-                            .copyWith(color: AppColors.textSecondary)),
+                    child: const Text('Skip'),
                   ),
                 ],
               ),
@@ -340,67 +390,75 @@ class _CaptionWizardScreenState extends ConsumerState<CaptionWizardScreen> {
 
             // ── Quick template strip ────────────────────────────────────
             Padding(
-              padding: const EdgeInsets.fromLTRB(0, 10, 0, 2),
+              padding: const EdgeInsets.fromLTRB(
+                  0, PrSpacing.md, 0, PrSpacing.xxs),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Padding(
-                    padding: const EdgeInsets.only(left: 18, bottom: 7),
-                    child: Text('Quick Setup',
-                        style: AppTextStyles.labelSmall.copyWith(
-                            color: AppColors.textSecondary,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.5)),
+                    padding: const EdgeInsets.only(
+                        left: PrSpacing.lg, bottom: PrSpacing.xs),
+                    child: Text('QUICK SETUP',
+                        style: AppTextStyles.kicker),
                   ),
                   SizedBox(
-                    height: 68,
+                    height: 80,
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: PrSpacing.md),
                       itemCount: _templates.length,
-                      separatorBuilder: (_, __) => const SizedBox(width: 10),
+                      separatorBuilder: (_, __) =>
+                          const SizedBox(width: PrSpacing.xs + 2),
                       itemBuilder: (_, i) {
                         final t = _templates[i];
                         final active = _activeTemplate == t.label;
                         return GestureDetector(
-                          onTap: () => _applyTemplate(t),
+                          onTap: () {
+                            PrHaptics.select();
+                            _applyTemplate(t);
+                          },
                           child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 180),
+                            duration: PrDuration.fast,
+                            curve: PrCurves.enter,
+                            width: 100,
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 14, vertical: 8),
+                                horizontal: PrSpacing.sm, vertical: PrSpacing.xs + 2),
                             decoration: BoxDecoration(
                               color: active
-                                  ? t.color.withValues(alpha: 0.18)
-                                  : AppColors.bgSurface,
-                              borderRadius: BorderRadius.circular(16),
+                                  ? t.color.withValues(alpha: 0.14)
+                                  : Theme.of(context).colorScheme.surfaceContainer,
+                              borderRadius: BorderRadius.circular(PrRadius.md),
                               border: Border.all(
-                                color: active
-                                    ? t.color
-                                    : AppColors.divider,
-                                width: active ? 1.5 : 1,
+                                color: active ? t.color : Theme.of(context).colorScheme.outlineVariant,
+                                width: active ? 1.3 : 0.7,
                               ),
-                              boxShadow: active
-                                  ? [BoxShadow(
-                                      color: t.color.withValues(alpha: 0.25),
-                                      blurRadius: 10)]
-                                  : null,
                             ),
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Icon(t.icon,
                                     size: 22,
-                                    color: active ? t.color : AppColors.textSecondary),
-                                const SizedBox(height: 4),
-                                Text(t.label,
-                                    style: AppTextStyles.labelSmall.copyWith(
-                                      color: active ? t.color : AppColors.textSecondary,
-                                      fontWeight: active
-                                          ? FontWeight.w800
-                                          : FontWeight.w500,
-                                      fontSize: 10,
-                                    )),
+                                    color: active ? t.color : Theme.of(context).colorScheme.onSurfaceVariant),
+                                const SizedBox(height: PrSpacing.xxs + 2),
+                                Text(
+                                  t.label,
+                                  textAlign: TextAlign.center,
+                                  style: AppTextStyles.labelSmall.copyWith(
+                                    color: active ? t.color : Theme.of(context).colorScheme.onSurface,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 11,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  '${t.duration}s',
+                                  style: AppTextStyles.labelSmall.copyWith(
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                    fontSize: 10,
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -447,6 +505,21 @@ class _CaptionWizardScreenState extends ConsumerState<CaptionWizardScreen> {
                         ? project2.frameDurations[i] : 3,
                     textPosition: i < project2.frameTextPositions.length
                         ? project2.frameTextPositions[i] : 'bottom',
+                    bgRemoval: project2.bgRemovalFor(i),
+                    onBgRemovalToggle: () {
+                      final enabled = project2.bgRemovalFor(i);
+                      ref
+                          .read(projectProvider.notifier)
+                          .setFrameBgRemoval(i, !enabled);
+                      setState(() {});
+                    },
+                    bgColor: project2.bgColorFor(i),
+                    onBgColorChanged: (argb) {
+                      ref
+                          .read(projectProvider.notifier)
+                          .setFrameBgColor(i, argb);
+                      setState(() {});
+                    },
                     onCaptionChanged: (v) {
                       ref.read(projectProvider.notifier).setFrameCaption(i, v);
                       setState(() {});
@@ -490,6 +563,16 @@ class _CaptionWizardScreenState extends ConsumerState<CaptionWizardScreen> {
                           ? project2.frameTextPositions[i] : 'bottom',
                       badgeSize: project2.frameBadgeSizes.length > i
                           ? project2.frameBadgeSizes[i] : 'medium',
+                      bgRemoval: project2.bgRemovalFor(i),
+                      bgColorArgb: project2.bgColorFor(i),
+                    ),
+                    onEditCaption: () => _openTextEditor(
+                      index: i,
+                      kind: PrTextEditorKind.caption,
+                    ),
+                    onEditPrice: () => _openTextEditor(
+                      index: i,
+                      kind: PrTextEditorKind.price,
                     ),
                   );
                 },
@@ -498,36 +581,14 @@ class _CaptionWizardScreenState extends ConsumerState<CaptionWizardScreen> {
 
             // ── Generate button ────────────────────────────────────────
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
-              child: SizedBox(
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: _done,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16)),
-                  ).copyWith(
-                    elevation: WidgetStateProperty.all(8),
-                    shadowColor: WidgetStateProperty.all(
-                        AppColors.primary.withValues(alpha: 0.4)),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.movie_creation_rounded, size: 20),
-                      const SizedBox(width: 10),
-                      Text(
-                        customized > 0
-                            ? 'Generate Video  ·  $customized customized'
-                            : 'Generate My Video',
-                        style: AppTextStyles.labelLarge.copyWith(
-                            fontSize: 15, fontWeight: FontWeight.w700),
-                      ),
-                    ],
-                  ),
-                ),
+              padding: const EdgeInsets.fromLTRB(
+                  PrSpacing.md, PrSpacing.xxs, PrSpacing.md, PrSpacing.lg),
+              child: PrButton(
+                label: customized > 0
+                    ? 'Continue · $customized customised'
+                    : 'Continue',
+                icon: PrIcons.sparkle,
+                onPressed: _done,
               ),
             ),
 
@@ -555,40 +616,40 @@ class _TextAnimStylePicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
+      padding: const EdgeInsets.fromLTRB(
+          PrSpacing.md, PrSpacing.xxs, PrSpacing.md, PrSpacing.sm),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.only(left: 2, bottom: 7),
-            child: Text('Text Entrance Animation',
-                style: AppTextStyles.labelSmall.copyWith(
-                    color: AppColors.textSecondary,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.5)),
+            padding: const EdgeInsets.only(left: 2, bottom: PrSpacing.xs),
+            child: Text('TEXT ENTRANCE', style: AppTextStyles.kicker),
           ),
           Row(
             children: _options.map((opt) {
               final active = selected == opt.$1;
               return Expanded(
                 child: GestureDetector(
-                  onTap: () => onSelected(opt.$1),
+                  onTap: () {
+                    PrHaptics.select();
+                    onSelected(opt.$1);
+                  },
                   child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 140),
+                    duration: PrDuration.fast,
+                    curve: PrCurves.enter,
                     margin: EdgeInsets.only(
-                        right: opt.$1 == 'slide_up' ? 0 : 8),
-                    padding: const EdgeInsets.symmetric(vertical: 9),
+                        right: opt.$1 == 'slide_up' ? 0 : PrSpacing.xs),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
                     decoration: BoxDecoration(
                       color: active
-                          ? AppColors.primaryContainer
-                          : AppColors.bgSurface,
-                      borderRadius: BorderRadius.circular(12),
+                          ? AppColors.brandEmber.withValues(alpha: 0.12)
+                          : Theme.of(context).colorScheme.surfaceContainer,
+                      borderRadius: BorderRadius.circular(PrRadius.sm + 2),
                       border: Border.all(
                         color: active
-                            ? AppColors.primary
-                            : AppColors.divider,
-                        width: active ? 1.5 : 1,
+                            ? AppColors.brandEmber
+                            : Theme.of(context).colorScheme.outlineVariant,
+                        width: active ? 1.3 : 0.7,
                       ),
                     ),
                     child: Column(
@@ -596,19 +657,17 @@ class _TextAnimStylePicker extends StatelessWidget {
                         Icon(opt.$2,
                             size: 18,
                             color: active
-                                ? AppColors.primary
-                                : AppColors.textSecondary),
-                        const SizedBox(height: 3),
+                                ? AppColors.brandEmber
+                                : Theme.of(context).colorScheme.onSurfaceVariant),
+                        const SizedBox(height: 4),
                         Text(opt.$3,
                             textAlign: TextAlign.center,
                             style: AppTextStyles.labelSmall.copyWith(
                               color: active
-                                  ? AppColors.primary
-                                  : AppColors.textDisabled,
-                              fontSize: 9,
-                              fontWeight: active
-                                  ? FontWeight.w700
-                                  : FontWeight.w500,
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Theme.of(context).colorScheme.onSurfaceVariant,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
                             )),
                       ],
                     ),
@@ -642,6 +701,10 @@ class _FrameCard extends StatelessWidget {
     required this.badgeSize,
     required this.duration,
     required this.textPosition,
+    required this.bgRemoval,
+    required this.onBgRemovalToggle,
+    required this.bgColor,
+    required this.onBgColorChanged,
     required this.onCaptionChanged,
     required this.onPriceChanged,
     required this.onMrpChanged,
@@ -654,6 +717,9 @@ class _FrameCard extends StatelessWidget {
     this.onRemove,
     this.onApplyToAll,
     this.onPreview,
+    this.onEditCaption,
+    this.onEditPrice,
+    this.onEditBadge,
   });
 
   final int index;
@@ -670,6 +736,13 @@ class _FrameCard extends StatelessWidget {
   final String badgeSize;
   final int duration;
   final String textPosition;
+  final bool bgRemoval;
+  final VoidCallback onBgRemovalToggle;
+
+  /// Current replacement background colour for this frame. `0` means
+  /// "default" (render time treats it as brand ember).
+  final int bgColor;
+  final ValueChanged<int> onBgColorChanged;
   final ValueChanged<String> onCaptionChanged;
   final ValueChanged<String> onPriceChanged;
   final ValueChanged<String> onMrpChanged;
@@ -682,6 +755,18 @@ class _FrameCard extends StatelessWidget {
   final VoidCallback? onRemove;
   final VoidCallback? onApplyToAll;
   final VoidCallback? onPreview;
+
+  /// Fires when the user taps the caption region on the preview.
+  /// Parent opens `showPrTextEditor(kind: caption)` and writes the result
+  /// back via [onCaptionChanged] + optionally [onApplyToAll].
+  final VoidCallback? onEditCaption;
+
+  /// Fires when the user taps the price/MRP badge on the preview.
+  final VoidCallback? onEditPrice;
+
+  /// Fires when the user taps the offer badge on the preview — opens the
+  /// existing badge picker (currently handled via chips below).
+  final VoidCallback? onEditBadge;
 
   bool get _hasAny =>
       captionCtrl.text.isNotEmpty ||
@@ -803,13 +888,11 @@ class _FrameCard extends StatelessWidget {
           // ── Full-width 9:16 live preview (max 340dp tall) ─────────
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: GestureDetector(
-              onTap: onPreview,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 340),
-                  child: AspectRatio(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 340),
+                child: AspectRatio(
                   aspectRatio: 9 / 16,
                   child: Stack(
                     fit: StackFit.expand,
@@ -823,32 +906,51 @@ class _FrameCard extends StatelessWidget {
                         badgeSize: badgeSize,
                         textPosition: textPosition,
                         fullSize: true,
+                        bgRemoval: bgRemoval,
+                        bgColorArgb: bgColor,
+                        onCaptionTap: onEditCaption,
+                        onPriceTap: onEditPrice,
+                        onBadgeTap: onEditBadge,
+                        onCaptionDrag: (offset) {
+                          onPositionSelected(
+                            TextPosition.fromOffsetWithPresetSnap(offset).raw,
+                          );
+                        },
                       ),
-                      // Fullscreen hint — bottom-right corner
-                      Positioned(
-                        bottom: 10, right: 10,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.6),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.fullscreen_rounded,
-                                  color: Colors.white, size: 14),
-                              SizedBox(width: 4),
-                              Text('Fullscreen',
-                                  style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w600)),
-                            ],
+                      // Fullscreen chip — bottom-right corner, only now
+                      // triggers fullscreen preview (not the whole surface)
+                      if (onPreview != null)
+                        Positioned(
+                          bottom: 10, right: 10,
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(8),
+                              onTap: onPreview,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.6),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.fullscreen_rounded,
+                                        color: Colors.white, size: 14),
+                                    SizedBox(width: 4),
+                                    Text('Fullscreen',
+                                        style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w600)),
+                                  ],
+                                ),
+                              ),
+                            ),
                           ),
                         ),
-                      ),
                       // LIVE badge — top-left corner
                       Positioned(
                         top: 10, left: 10,
@@ -869,7 +971,6 @@ class _FrameCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                ),
                 ),
               ),
             ),
@@ -895,11 +996,24 @@ class _FrameCard extends StatelessWidget {
                   maxLines: 2,
                   onChanged: onCaptionChanged,
                 ),
-                const SizedBox(height: 10),
-                // Text position picker sits right below caption
-                _TextPositionPicker(
-                  selected: textPosition,
-                  onSelected: onPositionSelected,
+                const SizedBox(height: 6),
+                // Drag-to-position hint (replaces the 3-position picker —
+                // the caption on the preview above is draggable).
+                Row(
+                  children: [
+                    const Icon(Icons.drag_indicator_rounded,
+                        size: 12, color: AppColors.textDisabled),
+                    const SizedBox(width: 4),
+                    Text(
+                      textPosition.startsWith('custom:')
+                          ? 'Drag the caption on the preview to reposition'
+                          : 'Tap the preview to edit · drag the caption to position',
+                      style: AppTextStyles.labelSmall.copyWith(
+                        color: AppColors.textDisabled,
+                        fontSize: 10.5,
+                      ),
+                    ),
+                  ],
                 ),
                 if (captionCtrl.text.isNotEmpty && onApplyToAll != null) ...[
                   const SizedBox(height: 6),
@@ -1081,6 +1195,46 @@ class _FrameCard extends StatelessWidget {
 
                 const SizedBox(height: 18),
                 _Divider(),
+                const SizedBox(height: 14),
+
+                // ── Clean background (subject segmentation) ───────────
+                Row(
+                  children: [
+                    _SectionLabel(
+                        Icons.auto_fix_high_rounded, 'Clean background'),
+                    const Spacer(),
+                    Switch.adaptive(
+                      value: bgRemoval,
+                      onChanged: (_) => onBgRemovalToggle(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  bgRemoval
+                      ? 'Subject is isolated and placed on the colour you pick below.'
+                      : 'Turn on to auto-isolate the product from a messy background.',
+                  style: AppTextStyles.bodySmall.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 11,
+                  ),
+                ),
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                  child: bgRemoval
+                      ? Padding(
+                          padding: const EdgeInsets.only(top: 10),
+                          child: _BgColorRow(
+                            selected: bgColor,
+                            onSelected: onBgColorChanged,
+                          ),
+                        )
+                      : const SizedBox(width: double.infinity),
+                ),
+
+                const SizedBox(height: 18),
+                _Divider(),
                 const SizedBox(height: 18),
 
                 // ── Slide duration ────────────────────────────────────
@@ -1150,68 +1304,8 @@ class _FrameCard extends StatelessWidget {
   }
 }
 
-// ── Text position picker ──────────────────────────────────────────────────────
-
-class _TextPositionPicker extends StatelessWidget {
-  const _TextPositionPicker({required this.selected, required this.onSelected});
-  final String selected;
-  final ValueChanged<String> onSelected;
-
-  static const _options = [
-    ('top',    Icons.vertical_align_top_rounded,    'Top'),
-    ('center', Icons.vertical_align_center_rounded, 'Middle'),
-    ('bottom', Icons.vertical_align_bottom_rounded, 'Bottom'),
-  ];
-
-  @override
-  Widget build(BuildContext context) => Row(
-        children: _options.map((opt) {
-          final active = selected == opt.$1;
-          return Expanded(
-            child: GestureDetector(
-              onTap: () => onSelected(opt.$1),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 140),
-                margin: EdgeInsets.only(
-                    right: opt.$1 == 'bottom' ? 0 : 6),
-                padding: const EdgeInsets.symmetric(vertical: 7),
-                decoration: BoxDecoration(
-                  color: active
-                      ? AppColors.primaryContainer
-                      : AppColors.bgElevated,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: active ? AppColors.primary : AppColors.divider,
-                    width: active ? 1.5 : 1,
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    Icon(opt.$2,
-                        size: 16,
-                        color: active
-                            ? AppColors.primary
-                            : AppColors.textSecondary),
-                    const SizedBox(height: 2),
-                    Text(opt.$3,
-                        textAlign: TextAlign.center,
-                        style: AppTextStyles.labelSmall.copyWith(
-                          color: active
-                              ? AppColors.primary
-                              : AppColors.textDisabled,
-                          fontSize: 9,
-                          fontWeight: active
-                              ? FontWeight.w700
-                              : FontWeight.w500,
-                        )),
-                  ],
-                ),
-              ),
-            ),
-          );
-        }).toList(),
-      );
-}
+// (Old _TextPositionPicker removed — caption position is now controlled
+//  by direct drag on the preview, saved as 'custom:x,y' in frameTextPositions.)
 
 // ── Live thumbnail ────────────────────────────────────────────────────────────
 
@@ -1225,6 +1319,13 @@ class _LiveThumbnail extends StatefulWidget {
     required this.textPosition,
     this.badgeSize = 'medium',
     this.fullSize = false,
+    this.bgRemoval = false,
+    this.bgColorArgb = 0,
+    this.onCaptionTap,
+    this.onPriceTap,
+    this.onBadgeTap,
+    this.onCaptionDrag,
+    this.onCaptionDragEnd,
   });
   final String path;
   final String caption;
@@ -1234,6 +1335,28 @@ class _LiveThumbnail extends StatefulWidget {
   final String textPosition;
   final String badgeSize;
   final bool fullSize;
+
+  /// When true, run subject segmentation on the asset and render the cut-out
+  /// over [bgColorArgb] (or brand ember if 0). Result is cached by the
+  /// service so toggles and colour switches only compute-once-per-combo.
+  final bool bgRemoval;
+  final int bgColorArgb;
+
+  /// Tap-to-edit callbacks. Null (the default) keeps the thumbnail passive —
+  /// used for the small preview cards where tap should open the fullscreen
+  /// preview instead. In the big frame-card preview, these are wired to
+  /// [showPrTextEditor] so users can edit text without scrolling to
+  /// textfields below.
+  final VoidCallback? onCaptionTap;
+  final VoidCallback? onPriceTap;
+  final VoidCallback? onBadgeTap;
+
+  /// Drag callbacks for free-form caption positioning. When set, the caption
+  /// region becomes pan-draggable; the receiver should write the new
+  /// fractional Offset into `frameTextPositions` via
+  /// `TextPosition.fromOffsetWithPresetSnap(o).raw`.
+  final void Function(Offset fractional)? onCaptionDrag;
+  final VoidCallback? onCaptionDragEnd;
 
   @override
   State<_LiveThumbnail> createState() => _LiveThumbnailState();
@@ -1245,16 +1368,42 @@ class _LiveThumbnailState extends State<_LiveThumbnail> {
   Uint8List? _videoThumb;
   bool _loadingThumb = false;
 
+  /// While the caption is being dragged, this holds the live fractional
+  /// offset so we can render guides and the latest position without waiting
+  /// for the parent to write back through setState.
+  Offset? _liveDragOffset;
+
+  /// Active snap guide during drag — drives the ember alignment lines.
+  TextSnapGuide _snapGuide = const TextSnapGuide();
+
+  // ── Real-time background removal state ────────────────────────────────
+  /// Path to the subject-isolated PNG for the current (asset, colour) pair.
+  /// `null` means "not processed yet" — fall back to the original image.
+  String? _bgRemovedPath;
+
+  /// True while the segmenter is running. Drives the spinner overlay.
+  bool _processingBg = false;
+
+  /// Increments on every trigger so stale results from earlier colour
+  /// changes don't overwrite a newer one.
+  int _bgRequestId = 0;
+
   bool get _isVideo {
     final idx = widget.path.lastIndexOf('.');
     if (idx < 0) return false;
     return _videoExts.contains(widget.path.substring(idx).toLowerCase());
   }
 
+  bool get _isRegularImage =>
+      !_isVideo &&
+      widget.path != kTextSlide &&
+      !isBeforeAfterPath(widget.path);
+
   @override
   void initState() {
     super.initState();
     if (_isVideo) _loadThumb();
+    _maybeProcessBg();
   }
 
   @override
@@ -1262,8 +1411,45 @@ class _LiveThumbnailState extends State<_LiveThumbnail> {
     super.didUpdateWidget(old);
     if (old.path != widget.path) {
       _videoThumb = null;
+      _bgRemovedPath = null;
       if (_isVideo) _loadThumb();
     }
+    if (old.path != widget.path ||
+        old.bgRemoval != widget.bgRemoval ||
+        old.bgColorArgb != widget.bgColorArgb) {
+      _maybeProcessBg();
+    }
+  }
+
+  /// Kick off subject segmentation if the toggle is on and the asset is a
+  /// regular image. Results are cached by the service, so re-triggering for
+  /// the same (path, colour) combo is effectively free.
+  Future<void> _maybeProcessBg() async {
+    if (!widget.bgRemoval) {
+      if (_bgRemovedPath != null || _processingBg) {
+        setState(() {
+          _bgRemovedPath = null;
+          _processingBg = false;
+        });
+      }
+      return;
+    }
+    if (!_isRegularImage) return;
+
+    final reqId = ++_bgRequestId;
+    final bgArgb = widget.bgColorArgb == 0 ? 0xFFF2A848 : widget.bgColorArgb;
+    setState(() => _processingBg = true);
+
+    final result = await BackgroundRemovalService.processToPath(
+      inputPath: widget.path,
+      backgroundColorArgb: bgArgb,
+    );
+
+    if (!mounted || reqId != _bgRequestId) return;
+    setState(() {
+      _bgRemovedPath = result;
+      _processingBg = false;
+    });
   }
 
   Future<void> _loadThumb() async {
@@ -1283,8 +1469,6 @@ class _LiveThumbnailState extends State<_LiveThumbnail> {
 
   @override
   Widget build(BuildContext context) {
-    // Proxy all widget fields via widget.xxx
-    final path        = widget.path;
     final caption     = widget.caption;
     final priceTag    = widget.priceTag;
     final mrpTag      = widget.mrpTag;
@@ -1296,161 +1480,401 @@ class _LiveThumbnailState extends State<_LiveThumbnail> {
         ? _badges.where((b) => b.$1 == offerBadge).firstOrNull
         : null;
 
-    const Map<String, double> _sizeFactors = {
+    const sizeFactors = <String, double>{
       'small': 0.65, 'medium': 1.0, 'large': 1.50,
     };
-    final sf = _sizeFactors[badgeSize] ?? 1.0;
+    final sf = sizeFactors[badgeSize] ?? 1.0;
 
-    final captionFontSize = fullSize ? 16.0 : 7.0;
+    final captionFontSize = fullSize ? 18.0 : 7.0;
     final badgeFontSize   = (fullSize ? 11.0 : 6.0) * sf;
     final priceFontSize   = (fullSize ? 12.0 : 7.0) * sf;
     final badgePadH       = (fullSize ? 8.0  : 4.0) * sf;
     final badgePadV       = (fullSize ? 4.0  : 2.0) * sf;
     final edgeInset       = fullSize ? 12.0 : 5.0;
 
-    // Approximate badge height for overlap avoidance when position == top
-    final hasBadgeOverlay = priceTag.isNotEmpty || mrpTag.isNotEmpty || offerBadge.isNotEmpty;
-    final badgeRowH = badgeFontSize + badgePadV * 2 + (fullSize ? 6.0 : 2.0);
+    final pos = TextPosition.parse(textPosition);
+    final activeOffset = _liveDragOffset ?? pos.offset;
+    final isDragging = _liveDragOffset != null;
+    final isInteractive = fullSize &&
+        (widget.onCaptionTap != null ||
+            widget.onPriceTap != null ||
+            widget.onBadgeTap != null ||
+            widget.onCaptionDrag != null);
 
-    final Widget content = Stack(
-      fit: StackFit.expand,
-      children: [
-        _buildImage(),
+    final Widget content = LayoutBuilder(builder: (ctx, box) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          _buildImage(),
 
-        if (caption.isNotEmpty)
-          if (textPosition == 'center')
-            // Semi-transparent band in the vertical center
+          // Real-time bg-removal spinner overlay.
+          if (_processingBg && widget.bgRemoval)
             Positioned.fill(
-              child: Align(
-                alignment: Alignment.center,
+              child: IgnorePointer(
                 child: Container(
-                  height: fullSize ? 120 : 40,
-                  decoration: const BoxDecoration(
-                    color: Color(0x88000000),
+                  color: Colors.black.withValues(alpha: 0.55),
+                  alignment: Alignment.center,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: fullSize ? 26 : 14,
+                        height: fullSize ? 26 : 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: fullSize ? 2.5 : 1.5,
+                          color: AppColors.brandEmber,
+                        ),
+                      ),
+                      if (fullSize) ...[
+                        const SizedBox(height: 10),
+                        Text('Isolating subject…',
+                            style: AppTextStyles.labelSmall.copyWith(
+                              color: Colors.white,
+                              fontSize: 11,
+                              letterSpacing: 1.2,
+                              fontWeight: FontWeight.w700,
+                            )),
+                      ],
+                    ],
                   ),
                 ),
               ),
-            )
-          else
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: textPosition == 'top'
-                      ? Alignment.bottomCenter
-                      : Alignment.topCenter,
-                  end: textPosition == 'top'
-                      ? Alignment.topCenter
-                      : Alignment.bottomCenter,
-                  colors: const [Colors.transparent, Color(0xCC000000)],
-                  stops: const [0.4, 1.0],
+            ),
+
+          // Subtle scrim only for legacy presets (top/center/bottom).
+          // Custom-positioned captions rely on the text's own drop shadow.
+          if (caption.isNotEmpty && !pos.isCustom && !isDragging)
+            _buildLegacyScrim(textPosition, fullSize),
+
+          // Caption — positioned by fractional Offset, pan-draggable in
+          // fullSize mode when onCaptionDrag is wired.
+          if (caption.isNotEmpty)
+            _buildCaption(
+              caption: caption,
+              fontSize: captionFontSize,
+              offset: activeOffset,
+              boxSize: Size(box.maxWidth, box.maxHeight),
+              edgeInset: edgeInset,
+              draggable: isInteractive && widget.onCaptionDrag != null,
+              tappable: isInteractive && widget.onCaptionTap != null,
+            ),
+
+          // Snap guides during drag — thin ember alignment lines.
+          if (isDragging && _snapGuide.hasSnap)
+            Positioned.fill(
+              child: IgnorePointer(child: _SnapGuideOverlay(guide: _snapGuide)),
+            ),
+
+          // Price / MRP badge — top-right, tappable.
+          if (priceTag.isNotEmpty || mrpTag.isNotEmpty)
+            Positioned(
+              top: edgeInset, right: edgeInset,
+              child: _tapShell(
+                enabled: isInteractive && widget.onPriceTap != null,
+                onTap: widget.onPriceTap,
+                child: Container(
+                  padding: EdgeInsets.symmetric(
+                      horizontal: badgePadH, vertical: badgePadV),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFB300),
+                    borderRadius: BorderRadius.circular(6),
+                    boxShadow: [BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.3),
+                        blurRadius: 4)],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (mrpTag.isNotEmpty)
+                        Text('₹$mrpTag',
+                            style: TextStyle(
+                              color: const Color(0xFF5A3A00),
+                              fontSize: priceFontSize * 0.75,
+                              fontWeight: FontWeight.w600,
+                              decoration: TextDecoration.lineThrough,
+                              decorationColor: const Color(0xFFCC2200),
+                              decorationThickness: 2,
+                            )),
+                      if (priceTag.isNotEmpty)
+                        Text('₹$priceTag',
+                            style: TextStyle(
+                                color: Colors.black,
+                                fontSize: priceFontSize,
+                                fontWeight: FontWeight.w900)),
+                    ],
+                  ),
                 ),
               ),
             ),
 
-        if (caption.isNotEmpty)
-          if (textPosition == 'center')
-            Positioned.fill(
-              left: edgeInset, right: edgeInset,
-              child: Center(child: _captionText(caption, captionFontSize)),
-            )
-          else
+          if (badgeData != null)
             Positioned(
-              left: edgeInset, right: edgeInset,
-              top: textPosition == 'top'
-                  ? (hasBadgeOverlay
-                      ? edgeInset + badgeRowH + (fullSize ? 8 : 3)
-                      : edgeInset)
-                  : null,
-              bottom: textPosition == 'bottom' ? edgeInset : null,
-              child: _captionText(caption, captionFontSize),
+              top: edgeInset, left: edgeInset,
+              child: _tapShell(
+                enabled: isInteractive && widget.onBadgeTap != null,
+                onTap: widget.onBadgeTap,
+                child: Container(
+                  padding: EdgeInsets.symmetric(
+                      horizontal: badgePadH, vertical: badgePadV),
+                  decoration: BoxDecoration(
+                    color: badgeData.$2,
+                    borderRadius: BorderRadius.circular(6),
+                    boxShadow: [BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.3),
+                        blurRadius: 4)],
+                  ),
+                  child: Text(badgeData.$1.replaceAll(' 🔥', ''),
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: badgeFontSize,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.3)),
+                ),
+              ),
             ),
 
-        if (priceTag.isNotEmpty || mrpTag.isNotEmpty)
-          Positioned(
-            top: edgeInset, right: edgeInset,
-            child: Container(
-              padding: EdgeInsets.symmetric(
-                  horizontal: badgePadH, vertical: badgePadV),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFB300),
-                borderRadius: BorderRadius.circular(6),
-                boxShadow: [BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.3),
-                    blurRadius: 4)],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (mrpTag.isNotEmpty)
-                    Text('₹$mrpTag',
-                        style: TextStyle(
-                          color: const Color(0xFF5A3A00),
-                          fontSize: priceFontSize * 0.75,
-                          fontWeight: FontWeight.w600,
-                          decoration: TextDecoration.lineThrough,
-                          decorationColor: const Color(0xFFCC2200),
-                          decorationThickness: 2,
-                        )),
-                  if (priceTag.isNotEmpty)
-                    Text('₹$priceTag',
-                        style: TextStyle(
-                            color: Colors.black,
-                            fontSize: priceFontSize,
-                            fontWeight: FontWeight.w900)),
-                ],
+          // Empty-state "Tap to add caption" affordance — tappable so users
+          // who haven't typed anything yet can still open the editor.
+          // Shows whenever caption is empty (regardless of other fields).
+          if (fullSize && caption.isEmpty && widget.onCaptionTap != null)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: edgeInset + 4,
+              child: Center(
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(999),
+                    onTap: () {
+                      PrHaptics.tap();
+                      widget.onCaptionTap!();
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.55),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: AppColors.brandEmber.withValues(alpha: 0.7),
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.add_rounded,
+                              color: AppColors.brandEmber, size: 14),
+                          const SizedBox(width: 4),
+                          const Text(
+                            'Tap to add caption',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
-          ),
 
-        if (badgeData != null)
-          Positioned(
-            top: edgeInset, left: edgeInset,
-            child: Container(
-              padding: EdgeInsets.symmetric(
-                  horizontal: badgePadH, vertical: badgePadV),
-              decoration: BoxDecoration(
-                color: badgeData.$2,
-                borderRadius: BorderRadius.circular(6),
-                boxShadow: [BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.3),
-                    blurRadius: 4)],
+          if (!fullSize)
+            Positioned(
+              bottom: 4, right: 4,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(3),
+                ),
+                child: const Text('LIVE',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 5,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.3)),
               ),
-              child: Text(badgeData.$1.replaceAll(' 🔥', ''),
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: badgeFontSize,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.3)),
             ),
-          ),
-
-        if (!fullSize)
-          Positioned(
-            bottom: 4, right: 4,
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(3),
-              ),
-              child: const Text('LIVE',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 5,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.3)),
-            ),
-          ),
-      ],
-    );
+        ],
+      );
+    });
 
     if (fullSize) return content;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(14),
       child: SizedBox(width: 80, height: 142, child: content),
+    );
+  }
+
+  // ── Tap shell — wraps a widget with an InkWell when [enabled] is true. ──
+  Widget _tapShell({
+    required bool enabled,
+    required VoidCallback? onTap,
+    required Widget child,
+  }) {
+    if (!enabled || onTap == null) return child;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(6),
+        onTap: () {
+          PrHaptics.tap();
+          onTap();
+        },
+        child: child,
+      ),
+    );
+  }
+
+  // ── Legacy scrim (top/center/bottom gradient band) ──────────────────────
+  Widget _buildLegacyScrim(String textPosition, bool fullSize) {
+    if (textPosition == 'center') {
+      return Positioned.fill(
+        child: Align(
+          alignment: Alignment.center,
+          child: Container(
+            height: fullSize ? 120 : 40,
+            decoration: const BoxDecoration(color: Color(0x88000000)),
+          ),
+        ),
+      );
+    }
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: textPosition == 'top'
+              ? Alignment.bottomCenter
+              : Alignment.topCenter,
+          end: textPosition == 'top'
+              ? Alignment.topCenter
+              : Alignment.bottomCenter,
+          colors: const [Colors.transparent, Color(0xCC000000)],
+          stops: const [0.4, 1.0],
+        ),
+      ),
+    );
+  }
+
+  // ── Caption rendered at fractional offset with gestures ─────────────────
+  //
+  // Gestures use long-press-drag (not pan) so the drag recogniser wins the
+  // gesture arena against the enclosing ListView's vertical scroll. Tap
+  // fires instantly via `onTap`; drag requires a ~250 ms hold to start,
+  // signalled by a haptic pulse + ember ring around the caption.
+  //
+  // The GestureDetector wraps ONLY the text widget (not a full-size Align),
+  // so tapping empty areas of the frame doesn't accidentally move the
+  // caption; empty taps fall through to the empty-state hint underneath.
+  Widget _buildCaption({
+    required String caption,
+    required double fontSize,
+    required Offset offset,
+    required Size boxSize,
+    required double edgeInset,
+    required bool draggable,
+    required bool tappable,
+  }) {
+    final maxCapWidth =
+        (boxSize.width - edgeInset * 2).clamp(32.0, double.infinity);
+
+    Widget captionText = Text(
+      caption,
+      style: TextStyle(
+        color: Colors.white,
+        fontSize: fontSize,
+        fontWeight: FontWeight.w800,
+        shadows: const [
+          Shadow(color: Colors.black, blurRadius: 12, offset: Offset(1, 1)),
+          Shadow(color: Colors.black, blurRadius: 6),
+        ],
+      ),
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      textAlign: TextAlign.center,
+    );
+
+    // Add inner padding so the gesture hit box extends slightly beyond the
+    // glyphs themselves — easier to grab on thin text.
+    Widget captionBox = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: _liveDragOffset != null
+          ? BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.35),
+              border: Border.all(
+                color: AppColors.brandEmber,
+                width: 1.5,
+              ),
+              borderRadius: BorderRadius.circular(8),
+            )
+          : null,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxCapWidth),
+        child: captionText,
+      ),
+    );
+
+    if (tappable || draggable) {
+      captionBox = GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: tappable
+            ? () {
+                PrHaptics.tap();
+                widget.onCaptionTap?.call();
+              }
+            : null,
+        // Long-press-drag — wins the arena over the parent ListView scroll.
+        onLongPressStart: draggable
+            ? (_) {
+                PrHaptics.select();
+                setState(() {
+                  _liveDragOffset = offset;
+                  _snapGuide = const TextSnapGuide();
+                });
+              }
+            : null,
+        onLongPressMoveUpdate: draggable
+            ? (d) {
+                // `offsetFromOrigin` is the total drag since long-press start.
+                final base = offset;
+                final dx = d.offsetFromOrigin.dx / boxSize.width;
+                final dy = d.offsetFromOrigin.dy / boxSize.height;
+                final raw = Offset(
+                  (base.dx + dx).clamp(0.05, 0.95),
+                  (base.dy + dy).clamp(0.05, 0.95),
+                );
+                final guide = applyDragSnap(raw);
+                final snapped = snapOffset(raw, guide);
+                setState(() {
+                  _liveDragOffset = snapped;
+                  _snapGuide = guide;
+                });
+                widget.onCaptionDrag?.call(snapped);
+              }
+            : null,
+        onLongPressEnd: draggable
+            ? (_) {
+                widget.onCaptionDragEnd?.call();
+                setState(() {
+                  _liveDragOffset = null;
+                  _snapGuide = const TextSnapGuide();
+                });
+              }
+            : null,
+        child: captionBox,
+      );
+    }
+
+    return Align(
+      alignment: Alignment(offset.dx * 2 - 1, offset.dy * 2 - 1),
+      child: captionBox,
     );
   }
 
@@ -1527,6 +1951,18 @@ class _LiveThumbnailState extends State<_LiveThumbnail> {
         ),
       );
     }
+    // Subject-isolated cutout takes precedence when available — this is
+    // the real-time preview of the "Clean background" feature.
+    if (widget.bgRemoval &&
+        _bgRemovedPath != null &&
+        File(_bgRemovedPath!).existsSync()) {
+      return Image.file(
+        File(_bgRemovedPath!),
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => _placeholder(),
+      );
+    }
+
     final file = File(widget.path);
     if (!file.existsSync()) return _placeholder();
     // Blur bg + centered contain — matches export for all aspect ratios.
@@ -2049,4 +2485,193 @@ class _BadgeChip extends StatelessWidget {
               )),
         ),
       );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Snap-guide overlay — thin ember lines shown while dragging the caption.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _SnapGuideOverlay extends StatelessWidget {
+  const _SnapGuideOverlay({required this.guide});
+  final TextSnapGuide guide;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(painter: _SnapGuidePainter(guide));
+  }
+}
+
+class _SnapGuidePainter extends CustomPainter {
+  _SnapGuidePainter(this.guide);
+  final TextSnapGuide guide;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = AppColors.brandEmber.withValues(alpha: 0.85)
+      ..strokeWidth = 1
+      ..style = PaintingStyle.stroke;
+
+    if (guide.snappedX != null) {
+      final x = size.width * guide.snappedX!;
+      _dashedLine(canvas,
+          Offset(x, 8), Offset(x, size.height - 8), paint, dash: 5, gap: 4);
+    }
+    if (guide.snappedY != null) {
+      final y = size.height * guide.snappedY!;
+      _dashedLine(canvas,
+          Offset(8, y), Offset(size.width - 8, y), paint, dash: 5, gap: 4);
+    }
+  }
+
+  void _dashedLine(
+    Canvas canvas,
+    Offset a,
+    Offset b,
+    Paint paint, {
+    required double dash,
+    required double gap,
+  }) {
+    final delta = b - a;
+    final len = delta.distance;
+    final dir = delta / len;
+    double travelled = 0;
+    while (travelled < len) {
+      final start = a + dir * travelled;
+      final end = a + dir * (travelled + dash).clamp(0, len);
+      canvas.drawLine(start, end, paint);
+      travelled += dash + gap;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SnapGuidePainter old) =>
+      old.guide.snappedX != guide.snappedX ||
+      old.guide.snappedY != guide.snappedY;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Background colour picker — a small curated palette for the "clean
+// background" feature. Each swatch writes an ARGB int via [onSelected]; the
+// special value 0 means "Default" (render time resolves to brand ember).
+//
+// The palette is deliberately narrow so users don't stall picking — these
+// are the seven colours that actually read well behind a cut-out subject
+// across retail / service / creator use cases.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _BgColorRow extends StatelessWidget {
+  const _BgColorRow({required this.selected, required this.onSelected});
+  final int selected;
+  final ValueChanged<int> onSelected;
+
+  /// (displayArgb, storedArgb, label). `storedArgb = 0` is the sentinel
+  /// "Default" that the renderer maps to ember.
+  static const List<(int, int, String)> _swatches = [
+    (0xFFF2A848, 0,          'Ember'),   // default
+    (0xFFFFFFFF, 0xFFFFFFFF, 'White'),
+    (0xFFF7F3ED, 0xFFF7F3ED, 'Cream'),
+    (0xFF141110, 0xFF141110, 'Noir'),
+    (0xFFCFE8FF, 0xFFCFE8FF, 'Sky'),
+    (0xFFBDF5DC, 0xFFBDF5DC, 'Mint'),
+    (0xFFFEC9C9, 0xFFFEC9C9, 'Blush'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 62,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.zero,
+        itemCount: _swatches.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        itemBuilder: (_, i) {
+          final (display, stored, label) = _swatches[i];
+          final isSelected = selected == stored;
+          return _SwatchChip(
+            displayColor: Color(display),
+            label: label,
+            isSelected: isSelected,
+            onTap: () => onSelected(stored),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _SwatchChip extends StatelessWidget {
+  const _SwatchChip({
+    required this.displayColor,
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final Color displayColor;
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: () {
+        PrHaptics.select();
+        onTap();
+      },
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOutCubic,
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: displayColor,
+              border: Border.all(
+                color: isSelected
+                    ? AppColors.brandEmber
+                    : Colors.black.withValues(alpha: 0.12),
+                width: isSelected ? 2.5 : 1,
+              ),
+              boxShadow: isSelected
+                  ? [
+                      BoxShadow(
+                        color: AppColors.brandEmber.withValues(alpha: 0.35),
+                        blurRadius: 10,
+                        spreadRadius: -1,
+                      ),
+                    ]
+                  : null,
+            ),
+            child: isSelected
+                ? Icon(
+                    Icons.check_rounded,
+                    size: 18,
+                    color: displayColor.computeLuminance() > 0.55
+                        ? Colors.black
+                        : Colors.white,
+                  )
+                : null,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: AppTextStyles.labelSmall.copyWith(
+              color: isSelected
+                  ? AppColors.brandEmber
+                  : scheme.onSurfaceVariant,
+              fontSize: 10,
+              fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

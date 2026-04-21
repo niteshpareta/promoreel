@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import '../core/utils/text_position.dart';
 
 /// Renders caption, price tag, and offer badge onto a transparent 720×1280 PNG.
 class TextRenderer {
@@ -69,8 +70,12 @@ class TextRenderer {
     // Approximate badge height for overlap avoidance (offer badge: padV*2 + fontSize)
     final double badgeH = (10 * sf * 2) + (30 * sf) + 16; // padV*2 + fontSize + margin
 
-    // Gradient scrim for text legibility
-    if (hasText) {
+    final pos = TextPosition.parse(textPosition);
+
+    // Gradient scrim for text legibility — only for legacy presets. Custom
+    // drag positions get no scrim; the text's own drop-shadows handle
+    // legibility without locking a huge dark band to the frame.
+    if (hasText && !pos.isCustom) {
       final Paint scrimPaint = Paint();
       if (textPosition == 'top') {
         scrimPaint.shader = const LinearGradient(
@@ -111,25 +116,37 @@ class TextRenderer {
             fontWeight: FontWeight.w800,
             height: 1.2,
             shadows: [
-              Shadow(color: Colors.black, blurRadius: 8, offset: Offset(2, 2)),
-              Shadow(color: Colors.black, blurRadius: 4),
+              Shadow(color: Colors.black, blurRadius: 12, offset: Offset(2, 2)),
+              Shadow(color: Colors.black, blurRadius: 6),
             ],
           ),
         ),
         textDirection: TextDirection.ltr,
+        textAlign: TextAlign.center,
         maxLines: 2,
       )..layout(maxWidth: width - 60.0);
 
+      final double x;
       final double y;
-      if (textPosition == 'top') {
+      if (pos.isCustom) {
+        // Centre the caption block on the fractional offset, clamped so the
+        // text never overflows the frame.
+        x = (width * pos.offset.dx - painter.width / 2)
+            .clamp(24.0, width - painter.width - 24.0);
+        y = (height * pos.offset.dy - painter.height / 2)
+            .clamp(40.0, height - painter.height - 40.0);
+      } else if (textPosition == 'top') {
         // Push caption below badge row when badges exist to avoid overlap
+        x = 30;
         y = hasBadgeOverlay ? (80 + badgeH + 12) : 100.0;
       } else if (textPosition == 'center') {
+        x = 30;
         y = (height - painter.height) / 2.0;
       } else {
+        x = 30;
         y = height - 148.0 - painter.height;
       }
-      painter.paint(canvas, Offset(30, y));
+      painter.paint(canvas, Offset(x, y));
     }
 
     // Price badge — top-right
