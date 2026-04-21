@@ -31,26 +31,61 @@ class VideoHistoryService {
   Future<Database> _database() async {
     if (_db != null) return _db!;
     final dir = await getApplicationDocumentsDirectory();
+    // NOTE: this service shares the `promoreel_history.db` file with
+    // `DraftService`. sqflite caches open connections by path, so both
+    // services MUST declare the same schema version and run the same
+    // schema guards — otherwise whichever opens first locks the DB at its
+    // own version and the other's onUpgrade never runs. Keep the version
+    // and `onOpen` body in lockstep with `DraftService`.
     _db = await openDatabase(
       p.join(dir.path, 'promoreel_history.db'),
-      version: 2,
-      onCreate: (db, _) => db.execute('''
-        CREATE TABLE videos (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          output_path TEXT NOT NULL,
-          thumbnail_path TEXT NOT NULL,
-          created_at INTEGER NOT NULL,
-          duration_seconds INTEGER NOT NULL DEFAULT 30,
-          project_json TEXT
-        )
-      '''),
+      version: 4,
+      onCreate: (db, _) async {
+        await db.execute('''
+          CREATE TABLE videos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            output_path TEXT NOT NULL,
+            thumbnail_path TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            duration_seconds INTEGER NOT NULL DEFAULT 30,
+            project_json TEXT
+          )
+        ''');
+        await _ensureDraftsTable(db);
+      },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
           await db.execute('ALTER TABLE videos ADD COLUMN project_json TEXT');
         }
+        await _ensureDraftsTable(db);
+      },
+      onOpen: (db) async {
+        await _ensureDraftsTable(db);
       },
     );
     return _db!;
+  }
+
+  /// Kept in sync with `DraftService._ensureDraftsTable`. Creating the
+  /// drafts table here as well lets this service safely be the first to
+  /// open the shared DB without leaving it in a state that breaks
+  /// `DraftService`'s later queries.
+  static Future<void> _ensureDraftsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS drafts (
+        id TEXT PRIMARY KEY,
+        project_json TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        thumbnail_path TEXT,
+        is_rendering INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    try {
+      await db.execute(
+          'ALTER TABLE drafts ADD COLUMN is_rendering INTEGER NOT NULL DEFAULT 0');
+    } catch (_) {
+      // Column already exists.
+    }
   }
 
   Future<int> insert({

@@ -83,7 +83,12 @@ The full wizard flow: `/picker → /caption-wizard → /style-picker → /review
 
 ### Gallery picker
 
-`/picker` is a thin bridge to the system Android Photo Picker via `image_picker.pickMultipleMedia()`. It renders a loading spinner, triggers the system picker in `initState`, and `pushReplacement`s to `/editor` with the selected file paths (so Back from editor doesn't re-launch the picker). No `READ_MEDIA_IMAGES` / `READ_MEDIA_VIDEO` permissions are declared — this was an intentional Play Store Photo & Video Permissions policy decision (see the `Migrate gallery picker to Android Photo Picker` commit). On Android 13+ the native Photo Picker opens with zero permission prompts; on Android 11–12 with the Play Services MediaProvider backport the same flow works; on older devices without the backport it falls back to `ACTION_GET_CONTENT` (suboptimal but acceptable).
+`/picker` branches by Android SDK level:
+
+- **Android 13+ (API 33+)** and iOS: thin bridge to the system Photo Picker via `image_picker.pickMultipleMedia()`. No media permissions, no prompts, Play Store Photo & Video Permissions policy satisfied.
+- **Android ≤12**: custom in-app gallery grid backed by `photo_manager`. Needed because many OEM-customised Android 11/12 builds (notably OnePlus OxygenOS) don't receive the Photo Picker backport via Google Play Services — the `ACTION_GET_CONTENT` fallback on those devices resolves to the Files app, which ignores `EXTRA_ALLOW_MULTIPLE` so multi-select silently breaks. Only `READ_EXTERNAL_STORAGE` (maxSdkVersion=32) is declared for this path — **not** `READ_MEDIA_IMAGES` / `READ_MEDIA_VIDEO`, which would trigger the Play Store policy review.
+
+Both paths call `projectProvider.startNew(paths)` and `pushReplacement` to `/editor` so Back from the editor doesn't re-trigger the picker. If the Android 13+ Photo Picker throws, the screen falls through to the custom gallery path as a last resort.
 
 ### Subscription gating
 
@@ -121,4 +126,4 @@ The full wizard flow: `/picker → /caption-wizard → /style-picker → /review
 - No `drift`, no `lottie`, no Google Fonts package. Firebase scaffolding files exist (`firebase_options.dart`, `firebase.json`, iOS Podfile) but no Firebase SDK is wired into `main.dart` or `pubspec.yaml` yet — setup is only half-done.
 - No iOS-specific code yet (Android is the launch target; iOS arrives in v2).
 - No Hindi ARB files yet despite the positioning section — all strings are hardcoded English currently. Hindi auto-select requires these to land before first launch.
-- No `photo_manager`, no `permission_handler`, no `device_info_plus` — removed with the Photo Picker migration. Don't re-add them without revisiting the Play Store photo/video permissions policy.
+- No `READ_MEDIA_IMAGES` or `READ_MEDIA_VIDEO` permissions. `photo_manager` is kept for the Android ≤12 gallery path and uses only `READ_EXTERNAL_STORAGE` (maxSdkVersion=32) — don't add the Android-13-era permissions back without first sorting out the Play Store Photo & Video Permissions declaration.

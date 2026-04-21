@@ -3,6 +3,14 @@
     <!-- Network: AdMob + Play Billing -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Custom gallery picker on Android ≤12 only. Capped at SDK 32 so
+         Android 13+ never requests it — those devices use the system Photo
+         Picker (no permission needed). This intentionally avoids declaring
+         READ_MEDIA_IMAGES / READ_MEDIA_VIDEO so we stay out of the Google
+         Play Photo & Video Permissions policy. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
     <!-- Play Billing -->
     <uses-permission android:name="com.android.vending.BILLING" />
 
@@ -33,6 +41,22 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+
+            <!-- Accept single image/video shared from other apps (Gallery, WhatsApp, browser, etc.) -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+
+            <!-- Accept multiple shared photos/videos -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
         </activity>
 
         <meta-data
@@ -57,10 +81,18 @@
     </application>
 
     <queries>
-        <!-- WhatsApp -->
+        <!-- Messaging / status -->
         <package android:name="com.whatsapp" />
         <package android:name="com.whatsapp.w4b" />
-        <!-- Share video -->
+        <package android:name="org.telegram.messenger" />
+        <!-- Social platforms for one-tap share -->
+        <package android:name="com.instagram.android" />
+        <package android:name="com.facebook.katana" />
+        <package android:name="com.facebook.lite" />
+        <package android:name="com.google.android.youtube" />
+        <package android:name="com.twitter.android" />
+        <package android:name="com.snapchat.android" />
+        <!-- Share video fallback -->
         <intent>
             <action android:name="android.intent.action.SEND" />
             <data android:mimeType="video/*" />

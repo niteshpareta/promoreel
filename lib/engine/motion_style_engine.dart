@@ -14,21 +14,70 @@ class FrameTextOverlay {
   final String animStyle; // 'none' | 'fade' | 'slide_up'
 }
 
+/// Per-slide camera/scale motion applied on top of the composited 720×1280 frame.
+/// Styles combine one of these with an xfade transition to produce their identity.
+enum _Motion {
+  none,
+  zoomInStandard, // 100% → 115% linear over the full slide duration
+  zoomInSubtle,   //  100% → 108% linear over the full slide duration
+  kenBurnsPan,    // pan across at 115% zoom; direction alternates by slide index
+  quickPulse,     // 105% → 100% in the first 0.3s (beat-sync feel)
+  popPulse,       // 112% → 100% in the first 0.45s (pop-in feel)
+}
+
 class MotionStyleEngine {
   static const Map<MotionStyleId, _StyleSpec> _specs = {
-    MotionStyleId.slowZoom:             _StyleSpec('fade',       0.6),
-    MotionStyleId.kenBurnsPan:          _StyleSpec('slideleft',  0.5),
-    MotionStyleId.softCrossfade:        _StyleSpec('dissolve',   0.8),
-    MotionStyleId.elegantSlide:         _StyleSpec('slideup',    0.5),
-    MotionStyleId.quickCutBeatSync:     _StyleSpec('fade',       0.1),
-    MotionStyleId.boldSlide:            _StyleSpec('slideright', 0.4),
-    MotionStyleId.flashReveal:          _StyleSpec('fade',       0.3),
-    MotionStyleId.gridPop:              _StyleSpec('fade',       0.4),
-    MotionStyleId.splitScreenInfo:      _StyleSpec('slidedown',  0.5),
-    MotionStyleId.bottomThirdHighlight: _StyleSpec('fade',       0.6),
-    MotionStyleId.progressiveReveal:    _StyleSpec('fade',       0.7),
-    MotionStyleId.captionStack:         _StyleSpec('slideleft',  0.5),
+    MotionStyleId.slowZoom:             _StyleSpec('fade',       0.60, _Motion.zoomInStandard),
+    MotionStyleId.kenBurnsPan:          _StyleSpec('fade',       0.50, _Motion.kenBurnsPan),
+    MotionStyleId.softCrossfade:        _StyleSpec('dissolve',   0.80, _Motion.none),
+    MotionStyleId.elegantSlide:         _StyleSpec('slideup',    0.50, _Motion.none),
+    MotionStyleId.quickCutBeatSync:     _StyleSpec('fade',       0.10, _Motion.quickPulse),
+    MotionStyleId.boldSlide:            _StyleSpec('slideright', 0.35, _Motion.none),
+    MotionStyleId.flashReveal:          _StyleSpec('fadewhite',  0.25, _Motion.none),
+    MotionStyleId.gridPop:              _StyleSpec('circleopen', 0.40, _Motion.popPulse),
+    MotionStyleId.splitScreenInfo:      _StyleSpec('slidedown',  0.50, _Motion.none),
+    MotionStyleId.bottomThirdHighlight: _StyleSpec('fade',       0.60, _Motion.zoomInSubtle),
+    MotionStyleId.progressiveReveal:    _StyleSpec('wipeleft',   0.70, _Motion.none),
+    MotionStyleId.captionStack:         _StyleSpec('slideleft',  0.50, _Motion.none),
   };
+
+  /// Build the motion filter chain (including leading comma) for a slide.
+  /// Returns an empty string if no motion applies.
+  ///
+  /// `frameDur` is the slide's own duration; `t` inside the expression is the
+  /// input-relative time, which restarts at 0 for each slide input.
+  static String _motionFilter(
+      _Motion motion, int slideIdx, double frameDur, int outW, int outH) {
+    if (motion == _Motion.none) return '';
+    final dur = frameDur.toStringAsFixed(3);
+    switch (motion) {
+      case _Motion.none:
+        return '';
+      case _Motion.zoomInStandard:
+        return ",crop='iw/(1+0.15*t/$dur)':'ih/(1+0.15*t/$dur)':"
+            "'(iw-ow)/2':'(ih-oh)/2',scale=$outW:$outH";
+      case _Motion.zoomInSubtle:
+        return ",crop='iw/(1+0.08*t/$dur)':'ih/(1+0.08*t/$dur)':"
+            "'(iw-ow)/2':'(ih-oh)/2',scale=$outW:$outH";
+      case _Motion.kenBurnsPan:
+        // Alternate pan direction per slide so consecutive slides don't feel identical.
+        if (slideIdx.isEven) {
+          return ",crop='iw/1.15':'ih/1.15':'(iw-ow)*t/$dur':'(ih-oh)/2',"
+              "scale=$outW:$outH";
+        } else {
+          return ",crop='iw/1.15':'ih/1.15':'(iw-ow)*(1-t/$dur)':'(ih-oh)/2',"
+              "scale=$outW:$outH";
+        }
+      case _Motion.quickPulse:
+        return ",crop='iw/(1.05-0.05*min(t,0.3)/0.3)':"
+            "'ih/(1.05-0.05*min(t,0.3)/0.3)':"
+            "'(iw-ow)/2':'(ih-oh)/2',scale=$outW:$outH";
+      case _Motion.popPulse:
+        return ",crop='iw/(1.12-0.12*min(t,0.45)/0.45)':"
+            "'ih/(1.12-0.12*min(t,0.45)/0.45)':"
+            "'(iw-ow)/2':'(ih-oh)/2',scale=$outW:$outH";
+    }
+  }
 
   static String build({
     required List<String> inputPaths,
@@ -54,7 +103,7 @@ class MotionStyleEngine {
     assert(inputPaths.length == isVideo.length);
     assert(inputPaths.length == frameDurations.length);
 
-    final spec = _specs[styleId] ?? const _StyleSpec('fade', 0.5);
+    final spec = _specs[styleId] ?? const _StyleSpec('fade', 0.5, _Motion.none);
     final int n = inputPaths.length;
 
     final double minDur = frameDurations.reduce((a, b) => a < b ? a : b);
@@ -125,9 +174,11 @@ class MotionStyleEngine {
     for (int i = 0; i < n; i++) {
       final bool preComposed = preComposedFlags != null &&
           i < preComposedFlags.length && preComposedFlags[i];
+      final String motion =
+          _motionFilter(spec.motion, i, frameDurations[i], outW, outH);
 
       if (preComposed) {
-        buf.write('[$i:v]fps=30,format=yuv420p[v$i]; ');
+        buf.write('[$i:v]fps=30$motion,format=yuv420p[v$i]; ');
       } else if (isVideo[i]) {
         buf.write('[$i:v]split[raw${i}a][raw${i}b]; ');
         buf.write('[raw${i}a]scale=$outW:$outH:'
@@ -137,7 +188,7 @@ class MotionStyleEngine {
             'force_original_aspect_ratio=decrease,'
             'setsar=1[fg$i]; ');
         buf.write('[bg$i][fg$i]overlay=(W-w)/2:(H-h)/2,'
-            'fps=30,format=yuv420p[v$i]; ');
+            'fps=30$motion,format=yuv420p[v$i]; ');
       } else {
         buf.write('[$i:v]split[raw${i}a][raw${i}b]; ');
         buf.write('[raw${i}a]scale=$outW:$outH:'
@@ -147,7 +198,7 @@ class MotionStyleEngine {
             'force_original_aspect_ratio=decrease,'
             'setsar=1[fg$i]; ');
         buf.write('[bg$i][fg$i]overlay=(W-w)/2:(H-h)/2,'
-            'fps=30,format=yuv420p[v$i]; ');
+            'fps=30$motion,format=yuv420p[v$i]; ');
       }
     }
 
@@ -286,7 +337,8 @@ class MotionStyleEngine {
 }
 
 class _StyleSpec {
-  const _StyleSpec(this.transitionName, this.transitionDuration);
+  const _StyleSpec(this.transitionName, this.transitionDuration, this.motion);
   final String transitionName;
   final double transitionDuration;
+  final _Motion motion;
 }

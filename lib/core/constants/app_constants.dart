@@ -1,4 +1,11 @@
+/// When false, all paywall gating is bypassed and Pro/lock UI is hidden.
+/// Flip to true once the Google Play subscription flow is wired up.
+const bool kSubscriptionEnabled = false;
+
 abstract final class AppConstants {
+  // Default music track assigned to new projects (must exist in assets/music/).
+  static const String defaultMusicTrackId = 'upbeat_01';
+
   // Output specs
   static const int outputWidth = 720;
   static const int outputHeight = 1280;
