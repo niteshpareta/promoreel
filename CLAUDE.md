@@ -2,11 +2,21 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Product positioning (read first)
+
+**PromoReel is a global product with an India-first v1.0 launch.**
+- Scope: a business video maker for small-business owners, solo entrepreneurs, service providers (salons, clinics, restaurants), small institutions (coaching, real estate, event organisers), and D2C creators — worldwide. It is **not** a WhatsApp-Status-only app and **not** shop-only. WhatsApp Status is one supported distribution target alongside Instagram Reels, Facebook, and YouTube Shorts.
+- Launch sequence: Google Play India v1.0 (en + hi) → global rollout in v1.1+ (en-US, id, pt-BR, es) → iOS in v2.
+- Default UI language: **English**. Hindi auto-selects only when the device locale is `hi-*`. Do not treat the app as "Hindi-first".
+- The "Rajesh" persona (tier-2 Indian shop owner on WhatsApp Business) is the anchor for v1.0 design calls because India is the beachhead — not because the product is India-only.
+
+The authoritative India store-copy source is `PLAYSTORE_LISTING.txt`. A separate global en-US listing will be authored in v1.1.
+
 ## What this app is
 
-**Offline-first Flutter app for Indian small shop owners** that assembles a sequence of photos / short videos + per-frame captions, price tags, and offer badges into a vertical (or square / landscape) promo video for WhatsApp Status. All rendering happens on-device via FFmpeg. No cloud, no accounts, no stock library.
+**Offline-first Flutter app for small-business owners** that assembles a sequence of photos / short videos + per-frame captions, price tags, and offer badges into a vertical (or square / landscape) promo video ready to share on WhatsApp Status, Instagram Reels, Facebook, and YouTube Shorts. All rendering happens on-device via FFmpeg. No cloud, no accounts, no stock library.
 
-> **Naming:** `pubspec.yaml` name is `statuspro`, Play Store branding is "StatusPro", but the Flutter app title, DB filename, temp folder, and output directory all say "PromoReel". Treat both as the same product — don't "fix" one to match the other without asking.
+> **Naming:** `pubspec.yaml` name is `promoreel`, package ID is `com.binaryscript.promoreel`, Play Store title is `PromoReel-Business Video Maker`. The Flutter app title, DB filename (`promorreel_history.db` — triple "r" typo baked in), temp folder (`promorreel_render`), and output directory all say "PromoReel". The `StatusProStatusVideoMaker` folder name at the repo root is a legacy remnant of the pre-rebrand identity — treat it as stale, don't "fix" paths to match it.
 
 ## Commands
 
@@ -20,7 +30,7 @@ flutter build apk --release          # Android APK
 flutter build appbundle --release    # Play Store AAB
 ```
 
-Dart SDK: `^3.10.7`. Flutter 3.x stable. Requires `ffmpeg_kit_flutter_new` (the actively-maintained fork of the archived `ffmpeg_kit_flutter`).
+Dart SDK: `^3.9.2`. Flutter 3.x stable. Requires `ffmpeg_kit_flutter_new` (the actively-maintained fork of the archived `ffmpeg_kit_flutter`).
 
 ## Architecture — the part worth reading before editing
 
@@ -71,6 +81,10 @@ Managed by `DraftService` and `VideoHistoryService` directly (raw sqflite, no OR
 
 The full wizard flow: `/picker → /caption-wizard → /style-picker → /review → /export`. `/editor` is a standalone entry for editing a loaded draft. `/paywall?tier=pro|business` is opened from any gated CTA. `/player?path=...` plays an exported mp4.
 
+### Gallery picker
+
+`/picker` is a thin bridge to the system Android Photo Picker via `image_picker.pickMultipleMedia()`. It renders a loading spinner, triggers the system picker in `initState`, and `pushReplacement`s to `/editor` with the selected file paths (so Back from editor doesn't re-launch the picker). No `READ_MEDIA_IMAGES` / `READ_MEDIA_VIDEO` permissions are declared — this was an intentional Play Store Photo & Video Permissions policy decision (see the `Migrate gallery picker to Android Photo Picker` commit). On Android 13+ the native Photo Picker opens with zero permission prompts; on Android 11–12 with the Play Services MediaProvider backport the same flow works; on older devices without the backport it falls back to `ACTION_GET_CONTENT` (suboptimal but acceptable).
+
 ### Subscription gating
 
 `SubscriptionTierX` extension in `subscription_provider.dart` is the single source of truth for what each tier unlocks (`has1080p`, `hasQrCode`, `hasBeatSync`, `maxMotionStyles`, etc.). UI should read capability flags from the tier, not check `tier == SubscriptionTier.business` directly, so gating rules stay in one place.
@@ -91,6 +105,7 @@ The full wizard flow: `/picker → /caption-wizard → /style-picker → /review
 | `lib/providers/subscription_provider.dart` | Tier capability flags (single source for gating). |
 | `lib/core/constants/app_constants.dart` | Output dimensions, limits, asset paths. |
 | `assets/music/` | 40 bundled MP3s loaded via `rootBundle`. |
+| `PLAYSTORE_LISTING.txt` | Authoritative India (en-IN + hi-IN) Play Store copy. |
 
 ## Conventions that are not obvious from the code
 
@@ -103,6 +118,7 @@ The full wizard flow: `/picker → /caption-wizard → /style-picker → /review
 ## What is intentionally NOT in the codebase
 
 - No timeline/keyframe editor — editing is per-frame only.
-- No `drift`, no `lottie`, no Google Fonts package, no Firebase — the product brief mentioned these but they were not adopted. Don't add them back without asking.
-- No iOS-specific code yet (Android is the launch target).
-- No Hindi ARB files yet despite the brief — all strings are hardcoded English currently.
+- No `drift`, no `lottie`, no Google Fonts package. Firebase scaffolding files exist (`firebase_options.dart`, `firebase.json`, iOS Podfile) but no Firebase SDK is wired into `main.dart` or `pubspec.yaml` yet — setup is only half-done.
+- No iOS-specific code yet (Android is the launch target; iOS arrives in v2).
+- No Hindi ARB files yet despite the positioning section — all strings are hardcoded English currently. Hindi auto-select requires these to land before first launch.
+- No `photo_manager`, no `permission_handler`, no `device_info_plus` — removed with the Photo Picker migration. Don't re-add them without revisiting the Play Store photo/video permissions policy.
