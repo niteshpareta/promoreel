@@ -3,16 +3,6 @@
     <!-- Network: AdMob + Play Billing -->
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- Media access: Android 13+ -->
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-
-    <!-- Media access: Android < 13 -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="29" />
-
     <!-- Play Billing -->
     <uses-permission android:name="com.android.vending.BILLING" />
 
@@ -25,8 +15,7 @@
     <application
         android:label="PromoReel"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher"
-        android:requestLegacyExternalStorage="true">
+        android:icon="@mipmap/ic_launcher">
 
         <activity
             android:name=".MainActivity"

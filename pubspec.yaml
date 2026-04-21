@@ -1,5 +1,5 @@
 name: promoreel
-description: PromoReel — WhatsApp Status Video Maker for Indian small businesses
+description: PromoReel — Business Video Maker for small businesses worldwide
 publish_to: 'none'
 version: 1.0.2+2
 
@@ -19,9 +19,6 @@ dependencies:
   # Video / FFmpeg
   ffmpeg_kit_flutter_new: ^4.1.0
 
-  # Media picking
-  photo_manager: ^3.6.0
-
   # File handling
   path_provider: ^2.1.5
   path: ^1.9.0
@@ -40,11 +37,8 @@ dependencies:
   # Ads (free tier)
   google_mobile_ads: ^5.2.0
 
-  # Image picking (branding logo)
+  # Media picking (photos, videos, branding logo) — uses Android Photo Picker on 13+
   image_picker: ^1.1.2
-
-  # Permissions
-  permission_handler: ^11.3.1
 
   # In-app video playback
   video_player: ^2.9.2
@@ -64,7 +58,6 @@ dependencies:
   # Utilities
   uuid: ^4.5.1
   collection: ^1.19.0
-  device_info_plus: ^10.1.2
 
   cupertino_icons: ^1.0.8
 
