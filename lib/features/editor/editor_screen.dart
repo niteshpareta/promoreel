@@ -5,14 +5,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../core/router/app_router.dart';
+import '../../core/ui/haptics.dart';
+import '../../core/ui/pr_button.dart';
+import '../../core/ui/pr_icons.dart';
+import '../../core/ui/tokens.dart';
 import '../../data/models/export_format.dart';
 import '../../data/models/motion_style.dart';
 import '../../data/models/video_project.dart';
 import '../../features/overlays/countdown_sheet.dart';
 import '../../features/overlays/qr_overlay_sheet.dart';
+import '../../features/shared/widgets/no_project_fallback.dart';
 import '../../providers/branding_provider.dart';
 import '../../providers/drafts_provider.dart';
 import '../../providers/project_provider.dart';
@@ -32,12 +38,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
   @override
   Widget build(BuildContext context) {
     final project = ref.watch(projectProvider);
-    if (project == null) {
-      WidgetsBinding.instance.addPostFrameCallback(
-          (_) => context.go(AppRoutes.home));
-      return const Scaffold(
-          body: Center(child: CircularProgressIndicator()));
-    }
+    if (project == null) return const NoProjectFallback();
 
     final branding = ref.watch(brandingProvider);
 
@@ -129,24 +130,80 @@ class _EditorAppBar extends ConsumerWidget {
   const _EditorAppBar({required this.onExport});
   final VoidCallback onExport;
 
+  Future<void> _onChangePhotos(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: AppColors.bgSurface,
+        title: const Text('Change photos?'),
+        content: const Text(
+          'This starts a new project with your new photos. '
+          'Captions, price tags, motion style, and music will reset. '
+          'Branding is kept.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            child: const Text('Change'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    final results = await ImagePicker().pickMultipleMedia(
+      limit: AppConstants.maxAssetsPerVideo,
+    );
+    if (results.isEmpty) return;
+
+    final paths = results
+        .take(AppConstants.maxAssetsPerVideo)
+        .map((f) => f.path)
+        .toList();
+    ref.read(projectProvider.notifier).startNew(paths);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) => Padding(
-        padding: const EdgeInsets.fromLTRB(8, 8, 12, 4),
+        padding: const EdgeInsets.fromLTRB(
+            PrSpacing.xs, PrSpacing.xs, PrSpacing.sm + 2, 0),
         child: Row(
           children: [
             IconButton(
-              icon: const Icon(Icons.arrow_back_rounded),
+              icon: const Icon(PrIcons.back),
               onPressed: () => context.pop(),
             ),
-            Text('Editor', style: AppTextStyles.titleLarge),
-            const Spacer(),
-            // Save draft button
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('EDITOR', style: AppTextStyles.kicker),
+                  Text(
+                    'Cutting room',
+                    style: AppTextStyles.titleLarge,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
             IconButton(
-              icon: const Icon(Icons.save_outlined),
+              icon: const Icon(PrIcons.swap),
+              tooltip: 'Change photos',
+              onPressed: () => _onChangePhotos(context, ref),
+            ),
+            IconButton(
+              icon: const Icon(PrIcons.save),
               tooltip: 'Save draft',
               onPressed: () async {
                 final project = ref.read(projectProvider);
                 if (project == null) return;
+                PrHaptics.commit();
                 await ref.read(draftsProvider.notifier).save(project);
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -159,18 +216,13 @@ class _EditorAppBar extends ConsumerWidget {
                 }
               },
             ),
-            const SizedBox(width: 4),
-            FilledButton.icon(
-              onPressed: onExport,
-              icon: const Icon(Icons.send_rounded, size: 18),
-              label: const Text('Share'),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.secondary,
-                foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+            SizedBox(
+              width: 96,
+              child: PrButton(
+                label: 'Export',
+                icon: PrIcons.sparkle,
+                size: PrButtonSize.sm,
+                onPressed: onExport,
               ),
             ),
           ],

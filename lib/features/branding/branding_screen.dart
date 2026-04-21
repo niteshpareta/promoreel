@@ -8,6 +8,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../data/models/branding_preset.dart';
 import '../../providers/branding_provider.dart';
+import '../../providers/subscription_provider.dart';
 
 class BrandingScreen extends ConsumerStatefulWidget {
   const BrandingScreen({super.key});
@@ -20,19 +21,24 @@ class _BrandingScreenState extends ConsumerState<BrandingScreen> {
   late final TextEditingController _nameCtrl;
   late final TextEditingController _phoneCtrl;
   late final TextEditingController _addressCtrl;
+  late final TextEditingController _kitNameCtrl;
   String? _logoPath;
+  String? _editingKitId; // null = no saved kit yet (first kit will be created)
   bool _saving = false;
 
   @override
   void initState() {
     super.initState();
-    final preset = ref.read(brandingProvider);
-    _nameCtrl    = TextEditingController(text: preset.businessName);
-    _phoneCtrl   = TextEditingController(text: preset.phoneNumber);
-    _addressCtrl = TextEditingController(text: preset.address);
-    _logoPath    = preset.logoPath;
+    final active = ref.read(brandingProvider);
+    _editingKitId = ref.read(brandKitsProvider).activeId;
+    _nameCtrl    = TextEditingController(text: active.businessName);
+    _phoneCtrl   = TextEditingController(text: active.phoneNumber);
+    _addressCtrl = TextEditingController(text: active.address);
+    _kitNameCtrl = TextEditingController(text: active.name);
+    _logoPath    = active.logoPath;
     _nameCtrl.addListener(_rebuild);
     _phoneCtrl.addListener(_rebuild);
+    _kitNameCtrl.addListener(_rebuild);
   }
 
   void _rebuild() => setState(() {});
@@ -41,10 +47,23 @@ class _BrandingScreenState extends ConsumerState<BrandingScreen> {
   void dispose() {
     _nameCtrl.removeListener(_rebuild);
     _phoneCtrl.removeListener(_rebuild);
+    _kitNameCtrl.removeListener(_rebuild);
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
     _addressCtrl.dispose();
+    _kitNameCtrl.dispose();
     super.dispose();
+  }
+
+  void _loadKitIntoForm(BrandingPreset kit) {
+    setState(() {
+      _editingKitId = kit.id;
+      _nameCtrl.text = kit.businessName;
+      _phoneCtrl.text = kit.phoneNumber;
+      _addressCtrl.text = kit.address;
+      _kitNameCtrl.text = kit.name;
+      _logoPath = kit.logoPath;
+    });
   }
 
   Future<void> _pickLogo() async {
@@ -56,14 +75,14 @@ class _BrandingScreenState extends ConsumerState<BrandingScreen> {
   Future<void> _save() async {
     setState(() => _saving = true);
     final preset = BrandingPreset(
-      id: const Uuid().v4(),
-      name: 'Default',
+      id: _editingKitId ?? const Uuid().v4(),
+      name: _kitNameCtrl.text.trim().isEmpty ? 'Default' : _kitNameCtrl.text.trim(),
       businessName: _nameCtrl.text.trim(),
       phoneNumber: _phoneCtrl.text.trim(),
       address: _addressCtrl.text.trim(),
       logoPath: _logoPath,
     );
-    await ref.read(brandingProvider.notifier).save(preset);
+    await ref.read(brandKitsProvider.notifier).save(preset);
     if (mounted) {
       setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -71,6 +90,43 @@ class _BrandingScreenState extends ConsumerState<BrandingScreen> {
       );
       context.pop();
     }
+  }
+
+  void _startNewKit() {
+    setState(() {
+      _editingKitId = null;
+      _kitNameCtrl.text = '';
+      _nameCtrl.text = '';
+      _phoneCtrl.text = '';
+      _addressCtrl.text = '';
+      _logoPath = null;
+    });
+  }
+
+  Future<void> _deleteCurrentKit() async {
+    final kitsState = ref.read(brandKitsProvider);
+    if (_editingKitId == null || kitsState.kits.length <= 1) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.bgSurface,
+        title: const Text('Delete this kit?'),
+        content: Text('"${_kitNameCtrl.text}" will be removed.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await ref.read(brandKitsProvider.notifier).delete(_editingKitId!);
+    if (!mounted) return;
+    final next = ref.read(brandKitsProvider).active;
+    if (next != null) _loadKitIntoForm(next);
   }
 
   @override
@@ -105,9 +161,29 @@ class _BrandingScreenState extends ConsumerState<BrandingScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            _KitSwitcher(
+              editingKitId: _editingKitId,
+              onSelect: _loadKitIntoForm,
+              onNewKit: _startNewKit,
+              onDelete: _deleteCurrentKit,
+            ),
+            const SizedBox(height: 20),
             Text('Logo', style: AppTextStyles.headlineSmall),
             const SizedBox(height: 12),
             _LogoPicker(path: _logoPath, onTap: _pickLogo),
+            const SizedBox(height: 28),
+            Text('Kit name', style: AppTextStyles.headlineSmall),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _kitNameCtrl,
+              style: AppTextStyles.bodyMedium,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                hintText: 'e.g. Main Shop, Branch, Event mode',
+                prefixIcon: Icon(Icons.bookmark_border_rounded,
+                    color: AppColors.textSecondary),
+              ),
+            ),
             const SizedBox(height: 28),
             Text('Business Info', style: AppTextStyles.headlineSmall),
             const SizedBox(height: 12),
@@ -271,4 +347,73 @@ class _PreviewCard extends StatelessWidget {
           ),
         ],
       );
+}
+
+/// Horizontal row of saved brand kits plus "+ New kit". Tapping a kit loads
+/// it into the form; tapping the current kit's delete button removes it
+/// (only available if more than one kit exists).
+class _KitSwitcher extends ConsumerWidget {
+  const _KitSwitcher({
+    required this.editingKitId,
+    required this.onSelect,
+    required this.onNewKit,
+    required this.onDelete,
+  });
+
+  final String? editingKitId;
+  final ValueChanged<BrandingPreset> onSelect;
+  final VoidCallback onNewKit;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(brandKitsProvider);
+    final tier = ref.watch(subscriptionProvider);
+    final maxKits = tier.brandingPresets;
+    final canAddMore = state.kits.length < maxKits;
+    final canDelete = editingKitId != null && state.kits.length > 1;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text('Brand kits', style: AppTextStyles.headlineSmall),
+            const Spacer(),
+            if (canDelete)
+              TextButton.icon(
+                onPressed: onDelete,
+                icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                label: const Text('Delete'),
+                style: TextButton.styleFrom(foregroundColor: AppColors.error),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 42,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: [
+              for (final kit in state.kits)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text(kit.name.isEmpty ? 'Unnamed' : kit.name),
+                    selected: kit.id == editingKitId,
+                    onSelected: (_) => onSelect(kit),
+                    selectedColor: AppColors.primary.withValues(alpha: 0.22),
+                  ),
+                ),
+              ActionChip(
+                avatar: const Icon(Icons.add_rounded, size: 16),
+                label: Text(canAddMore ? 'New kit' : 'Limit reached'),
+                onPressed: canAddMore ? onNewKit : null,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }

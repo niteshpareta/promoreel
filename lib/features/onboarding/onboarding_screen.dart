@@ -1,11 +1,28 @@
-import 'dart:math' show pi, cos, sin;
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/router/app_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
-import '../../core/router/app_router.dart';
+import '../../core/ui/aurora_backdrop.dart';
+import '../../core/ui/haptics.dart';
+import '../../core/ui/pr_button.dart';
+import '../../core/ui/pr_icons.dart';
+import '../../core/ui/reel_mark.dart';
+import '../../core/ui/tokens.dart';
 
+/// Onboarding — 3 slides, designed for conversion.
+///
+/// The job of this screen isn't to teach features; it's to make the user want
+/// to tap "Start". Each slide commits to a single message, written as
+/// benefit-first editorial copy (not feature-list bullets). Visuals are built
+/// in code (vector + animation) so everything is crisp and on-brand, with no
+/// marketing PNGs to maintain.
+///
+///   1. **The Moment**   — why PromoReel exists (ember reel, aurora, bold promise)
+///   2. **The Method**   — how it works in three beats (cycling phone frame)
+///   3. **The Ask**      — compelling CTA + trust row (no card / no account / offline)
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
 
@@ -17,124 +34,778 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     with TickerProviderStateMixin {
   final _pageController = PageController();
   int _currentPage = 0;
-  late final AnimationController _pulseCtrl;
-  late final Animation<double> _pulse;
 
-  @override
-  void initState() {
-    super.initState();
-    _pulseCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    )..repeat(reverse: true);
-    _pulse = CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut);
+  Future<void> _markSeenAndGo(String route) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('onboarding_seen', true);
+    if (mounted) context.go(route);
+  }
+
+  void _next() {
+    PrHaptics.tap();
+    if (_currentPage < 2) {
+      _pageController.nextPage(
+        duration: const Duration(milliseconds: 420),
+        curve: PrCurves.cinematic,
+      );
+    } else {
+      _markSeenAndGo(AppRoutes.picker);
+    }
   }
 
   @override
   void dispose() {
     _pageController.dispose();
-    _pulseCtrl.dispose();
     super.dispose();
-  }
-
-  Future<void> _markSeenAndGo() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('onboarding_seen', true);
-    if (mounted) context.go(AppRoutes.home);
-  }
-
-  void _next() {
-    if (_currentPage < 2) {
-      _pageController.nextPage(
-          duration: const Duration(milliseconds: 350),
-          curve: Curves.easeInOut);
-    } else {
-      _markSeenAndGo();
-    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isLast = _currentPage == 2;
+
     return Scaffold(
-      backgroundColor: AppColors.bgDark,
-      body: SafeArea(
-        child: Column(
+      body: Stack(
+        children: [
+          // Aurora ambient — the "this is cinema" atmosphere
+          const Positioned.fill(
+            child: Opacity(opacity: 0.55, child: AuroraBackdrop(intensity: 1.05)),
+          ),
+          SafeArea(
+            child: Column(
+              children: [
+                // ── Top bar: filmstrip progress + skip ──────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                      PrSpacing.lg, PrSpacing.xs, PrSpacing.xs, 0),
+                  child: Row(
+                    children: [
+                      _FilmstripProgress(current: _currentPage, total: 3),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () => _markSeenAndGo(AppRoutes.home),
+                        child: Text(
+                          'Skip',
+                          style: AppTextStyles.labelMedium.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // ── Pages ───────────────────────────────────────────────
+                Expanded(
+                  child: PageView(
+                    controller: _pageController,
+                    physics: const BouncingScrollPhysics(),
+                    onPageChanged: (i) => setState(() => _currentPage = i),
+                    children: const [
+                      _SlideMoment(),
+                      _SlideMethod(),
+                      _SlideAsk(),
+                    ],
+                  ),
+                ),
+                // ── CTA + secondary ─────────────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                      PrSpacing.xl, PrSpacing.sm, PrSpacing.xl, PrSpacing.xl),
+                  child: Column(
+                    children: [
+                      PrButton(
+                        label: isLast ? 'Start my first reel' : 'Next',
+                        icon: isLast ? PrIcons.sparkle : null,
+                        trailing:
+                            isLast ? null : const Icon(PrIcons.chevronRight),
+                        onPressed: _next,
+                      ),
+                      if (isLast) ...[
+                        const SizedBox(height: PrSpacing.xs + 2),
+                        Text(
+                          'Free · No card · No account',
+                          style: AppTextStyles.labelSmall.copyWith(
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                            letterSpacing: 1.1,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Filmstrip progress — three perforated panels, active one glows ember.
+// Replaces the generic 3-dot indicator.
+// ════════════════════════════════════════════════════════════════════════════
+
+class _FilmstripProgress extends StatelessWidget {
+  const _FilmstripProgress({required this.current, required this.total});
+  final int current;
+  final int total;
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = Theme.of(context).colorScheme.outlineVariant;
+    return Row(
+      children: List.generate(total, (i) {
+        final active = i == current;
+        final done = i < current;
+        return AnimatedContainer(
+          duration: PrDuration.base,
+          curve: PrCurves.enter,
+          margin: const EdgeInsets.only(right: 6),
+          width: active ? 36 : 14,
+          height: 6,
+          decoration: BoxDecoration(
+            color: active
+                ? AppColors.brandEmber
+                : done
+                    ? AppColors.brandEmberDeep.withValues(alpha: 0.6)
+                    : muted.withValues(alpha: 0.4),
+            borderRadius: BorderRadius.circular(2),
+          ),
+        );
+      }),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// SLIDE 1 — The Moment
+// Giant rotating ReelMark. Editorial "ISSUE NO." kicker. A single promise
+// written in Fraunces serif. Anchors the emotional pitch.
+// ════════════════════════════════════════════════════════════════════════════
+
+class _SlideMoment extends StatelessWidget {
+  const _SlideMoment();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: PrSpacing.xl),
+      child: Column(
+        children: [
+          const Spacer(flex: 2),
+          // The hero reel — rotates ambiently, sets the "this is cinema" tone.
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              // Halo ring
+              Container(
+                width: 240,
+                height: 240,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      AppColors.brandEmber.withValues(alpha: 0.22),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+              ),
+              const ReelMark(size: 180),
+            ],
+          ),
+          const SizedBox(height: PrSpacing.xl),
+          const _SprocketDivider(),
+          const SizedBox(height: PrSpacing.lg),
+          RichText(
+            textAlign: TextAlign.center,
+            text: TextSpan(
+              style: AppTextStyles.displayMedium.copyWith(
+                fontSize: 34,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
+              children: [
+                const TextSpan(text: 'Your work,\nmade '),
+                TextSpan(
+                  text: 'cinematic.',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: PrSpacing.sm),
+          Text(
+            'If you sell, serve, teach, or create —\nturn your photos into scroll-stopping reels.',
+            style: AppTextStyles.bodyLarge.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              height: 1.55,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const Spacer(flex: 3),
+        ],
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// SLIDE 2 — The Method
+// A single phone frame that cycles through the three stages of creation
+// every ~2s: raw photos → style picker → finished reel. Shows the journey.
+// ════════════════════════════════════════════════════════════════════════════
+
+class _SlideMethod extends StatefulWidget {
+  const _SlideMethod();
+
+  @override
+  State<_SlideMethod> createState() => _SlideMethodState();
+}
+
+class _SlideMethodState extends State<_SlideMethod>
+    with SingleTickerProviderStateMixin {
+  int _stage = 0;
+  late final Animation<double> _tick;
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2400),
+    )..repeat();
+    _tick = _ctrl;
+    _ctrl.addStatusListener((s) {
+      if (s == AnimationStatus.completed) {
+        setState(() => _stage = (_stage + 1) % 3);
+      }
+    });
+    _ctrl.addListener(() {
+      if (_ctrl.value > 0.98 && _stage != (_stage + 1) % 3) {
+        // (no-op; state change driven by status listener)
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: PrSpacing.xl),
+      child: Column(
+        children: [
+          const Spacer(flex: 1),
+          // Cycling phone mock
+          _CyclingPhone(stage: _stage, tick: _tick),
+          const Spacer(flex: 1),
+          Text('HOW IT WORKS', style: AppTextStyles.kicker),
+          const SizedBox(height: PrSpacing.xs + 2),
+          RichText(
+            textAlign: TextAlign.center,
+            text: TextSpan(
+              style: AppTextStyles.displayMedium.copyWith(
+                fontSize: 30,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
+              children: [
+                const TextSpan(text: 'Pick. Pick. '),
+                TextSpan(
+                  text: 'Posted.',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: PrSpacing.md),
+          _StepRow(
+            active: _stage == 0,
+            number: '01',
+            label: 'Pick 5 photos',
+            sublabel: 'From your gallery',
+          ),
+          _StepRow(
+            active: _stage == 1,
+            number: '02',
+            label: 'Pick a motion style',
+            sublabel: '12 cinematic templates',
+          ),
+          _StepRow(
+            active: _stage == 2,
+            number: '03',
+            label: 'We cut the reel',
+            sublabel: 'Captions, beats, branding — done',
+          ),
+          const Spacer(flex: 1),
+        ],
+      ),
+    );
+  }
+}
+
+class _StepRow extends StatelessWidget {
+  const _StepRow({
+    required this.active,
+    required this.number,
+    required this.label,
+    required this.sublabel,
+  });
+  final bool active;
+  final String number;
+  final String label;
+  final String sublabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return AnimatedContainer(
+      duration: PrDuration.base,
+      curve: PrCurves.enter,
+      margin: const EdgeInsets.only(top: PrSpacing.xs),
+      padding: const EdgeInsets.symmetric(
+          horizontal: PrSpacing.sm, vertical: PrSpacing.xs + 1),
+      decoration: BoxDecoration(
+        color: active
+            ? AppColors.brandEmber.withValues(alpha: 0.10)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(PrRadius.sm),
+        border: Border.all(
+          color: active
+              ? AppColors.brandEmber.withValues(alpha: 0.35)
+              : Colors.transparent,
+          width: 0.7,
+        ),
+      ),
+      child: Row(
+        children: [
+          Text(
+            number,
+            style: AppTextStyles.numeric.copyWith(
+              color: active ? AppColors.brandEmber : scheme.onSurfaceVariant,
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(width: PrSpacing.sm + 2),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(label,
+                    style: AppTextStyles.titleMedium.copyWith(
+                      color: scheme.onSurface,
+                    )),
+                Text(sublabel,
+                    style: AppTextStyles.labelSmall.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: 11,
+                    )),
+              ],
+            ),
+          ),
+          if (active)
+            Icon(PrIcons.sparkle,
+                color: AppColors.brandEmber, size: 16),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Cycling phone — shows the three stages of creation in a loop ─────────
+
+class _CyclingPhone extends StatelessWidget {
+  const _CyclingPhone({required this.stage, required this.tick});
+  final int stage;
+  final Animation<double> tick;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 168,
+      height: 290,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(PrRadius.xl),
+        color: Colors.black,
+        border: Border.all(
+          color: AppColors.brandEmber.withValues(alpha: 0.35),
+          width: 2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.brandEmber.withValues(alpha: 0.25),
+            blurRadius: 40,
+            spreadRadius: -4,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(PrRadius.xl - 4),
+        child: Padding(
+          padding: const EdgeInsets.all(4),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(PrRadius.lg),
+            child: AnimatedSwitcher(
+              duration: PrDuration.slow,
+              switchInCurve: PrCurves.cinematic,
+              switchOutCurve: PrCurves.exit,
+              transitionBuilder: (child, anim) => FadeTransition(
+                opacity: anim,
+                child: ScaleTransition(
+                  scale: Tween<double>(begin: 0.94, end: 1).animate(anim),
+                  child: child,
+                ),
+              ),
+              child: switch (stage) {
+                0 => const _StagePhotos(key: ValueKey('stage-photos')),
+                1 => const _StageStyles(key: ValueKey('stage-styles')),
+                _ => _StageReel(key: const ValueKey('stage-reel'), tick: tick),
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StagePhotos extends StatelessWidget {
+  const _StagePhotos({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: AppColors.canvasDark,
+      padding: const EdgeInsets.all(PrSpacing.xs),
+      child: Column(
+        children: [
+          // Top strip — "Photos"
+          Padding(
+            padding: const EdgeInsets.symmetric(
+                horizontal: PrSpacing.xs, vertical: PrSpacing.xxs + 2),
+            child: Row(
+              children: [
+                Icon(PrIcons.gallery,
+                    color: AppColors.brandEmber, size: 12),
+                const SizedBox(width: 4),
+                Text('Gallery',
+                    style: AppTextStyles.labelSmall.copyWith(
+                      color: Colors.white,
+                      fontSize: 9,
+                    )),
+              ],
+            ),
+          ),
+          // Photo grid (6 mock tiles)
+          Expanded(
+            child: GridView.count(
+              crossAxisCount: 3,
+              mainAxisSpacing: 3,
+              crossAxisSpacing: 3,
+              padding: EdgeInsets.zero,
+              physics: const NeverScrollableScrollPhysics(),
+              children: List.generate(6, (i) {
+                final selected = i < 3; // first 3 "picked"
+                return Container(
+                  decoration: BoxDecoration(
+                    color: _tileColor(i),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                      color: selected
+                          ? AppColors.brandEmber
+                          : Colors.transparent,
+                      width: 1.4,
+                    ),
+                  ),
+                  child: selected
+                      ? Align(
+                          alignment: Alignment.topRight,
+                          child: Container(
+                            margin: const EdgeInsets.all(2),
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: AppColors.brandEmber,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                  color: Colors.black, width: 1),
+                            ),
+                            child: Icon(PrIcons.check,
+                                color: AppColors.onBrand, size: 8),
+                          ),
+                        )
+                      : null,
+                );
+              }),
+            ),
+          ),
+          // Bottom strip — "3 selected · Next"
+          Container(
+            margin: const EdgeInsets.symmetric(vertical: PrSpacing.xxs + 2),
+            padding: const EdgeInsets.symmetric(
+                horizontal: PrSpacing.xs, vertical: 5),
+            decoration: BoxDecoration(
+              color: AppColors.brandEmber,
+              borderRadius: BorderRadius.circular(PrRadius.sm),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text('3 selected · Continue',
+                    style: AppTextStyles.labelSmall.copyWith(
+                      color: AppColors.onBrand,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
+                    )),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _tileColor(int i) {
+    const swatches = [
+      Color(0xFF8A6B3C),
+      Color(0xFF4A3A2A),
+      Color(0xFF6B4524),
+      Color(0xFF2E2923),
+      Color(0xFF4F3A28),
+      Color(0xFF3A2E25),
+    ];
+    return swatches[i % swatches.length];
+  }
+}
+
+class _StageStyles extends StatelessWidget {
+  const _StageStyles({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: AppColors.canvasDark,
+      padding: const EdgeInsets.all(PrSpacing.xs + 2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('MOTION',
+              style: AppTextStyles.kicker.copyWith(
+                fontSize: 8,
+                letterSpacing: 1.8,
+                color: AppColors.brandEmberSoft,
+              )),
+          const SizedBox(height: 2),
+          Text('Choose a vibe',
+              style: AppTextStyles.titleSmall.copyWith(
+                color: Colors.white,
+                fontSize: 10,
+              )),
+          const SizedBox(height: PrSpacing.xs),
+          Expanded(
+            child: GridView.count(
+              crossAxisCount: 2,
+              mainAxisSpacing: 4,
+              crossAxisSpacing: 4,
+              childAspectRatio: 1.1,
+              padding: EdgeInsets.zero,
+              physics: const NeverScrollableScrollPhysics(),
+              children: const [
+                _StyleChip(name: 'Subtle', color: 0xFFB8772A, selected: true),
+                _StyleChip(name: 'Bold', color: 0xFFE63E7A),
+                _StyleChip(name: 'Zoom', color: 0xFF60A5FA),
+                _StyleChip(name: 'Beat', color: 0xFF4ADE80),
+                _StyleChip(name: 'Fade', color: 0xFFF2C661),
+                _StyleChip(name: 'Flash', color: 0xFFF87171),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StyleChip extends StatelessWidget {
+  const _StyleChip({
+    required this.name,
+    required this.color,
+    this.selected = false,
+  });
+  final String name;
+  final int color;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = Color(color);
+    return Container(
+      decoration: BoxDecoration(
+        color: selected ? c.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: selected ? c : Colors.white.withValues(alpha: 0.08),
+          width: selected ? 1.2 : 0.5,
+        ),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        name,
+        style: AppTextStyles.labelSmall.copyWith(
+          color: selected ? c : Colors.white.withValues(alpha: 0.7),
+          fontSize: 9,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _StageReel extends StatelessWidget {
+  const _StageReel({super.key, required this.tick});
+  final Animation<double> tick;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: tick,
+      builder: (_, __) => Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF251A11), Color(0xFF0A0807)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Stack(
+          fit: StackFit.expand,
           children: [
-            // Skip
-            Align(
-              alignment: Alignment.topRight,
-              child: Padding(
-                padding: const EdgeInsets.only(right: 8, top: 4),
-                child: TextButton(
-                  onPressed: _markSeenAndGo,
-                  child: Text('Skip',
-                      style: AppTextStyles.bodyMedium
-                          .copyWith(color: AppColors.textSecondary)),
+            // Faux video background shimmer
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      AppColors.brandEmber.withValues(
+                          alpha: 0.18 + 0.1 * math.sin(tick.value * math.pi * 2)),
+                      Colors.transparent,
+                    ],
+                  ),
                 ),
               ),
             ),
-
-            // Pages
-            Expanded(
-              child: PageView(
-                controller: _pageController,
-                onPageChanged: (i) => setState(() => _currentPage = i),
+            // Play glyph
+            Center(
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.18),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.7)),
+                ),
+                child: const Icon(PrIcons.play,
+                    color: Colors.white, size: 24),
+              ),
+            ),
+            // Faux caption + price badge
+            Positioned(
+              bottom: 32,
+              left: 8,
+              right: 8,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _Page1(pulse: _pulse),
-                  const _Page2(),
-                  const _Page3(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppColors.brandEmber,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                    child: Text('NEW',
+                        style: AppTextStyles.labelSmall.copyWith(
+                          color: AppColors.onBrand,
+                          fontSize: 8,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.2,
+                        )),
+                  ),
+                  const SizedBox(height: 4),
+                  Text('Your best work.',
+                      style: AppTextStyles.titleSmall.copyWith(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        shadows: const [
+                          Shadow(color: Colors.black, blurRadius: 6),
+                        ],
+                      )),
                 ],
               ),
             ),
-
-            // Dots + button
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-              child: Column(
+            // Bottom progress scrubber
+            Positioned(
+              bottom: 12,
+              left: 8,
+              right: 8,
+              child: Row(
                 children: [
-                  // Dots
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(
-                      3,
-                      (i) => AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
-                        width: i == _currentPage ? 28 : 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: i == _currentPage
-                              ? AppColors.primary
-                              : AppColors.divider,
-                          borderRadius: BorderRadius.circular(4),
+                  Expanded(
+                    child: Container(
+                      height: 2,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(1),
+                      ),
+                      child: FractionallySizedBox(
+                        alignment: Alignment.centerLeft,
+                        widthFactor: tick.value,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: AppColors.brandEmber,
+                            borderRadius: BorderRadius.circular(1),
+                          ),
                         ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 24),
-                  // CTA button
-                  SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: ElevatedButton(
-                      onPressed: _next,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _currentPage == 2
-                            ? AppColors.secondary
-                            : AppColors.primary,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16)),
-                        elevation: 0,
-                      ),
-                      child: Text(
-                        _currentPage == 2 ? 'Start for Free' : 'Next',
-                        style: AppTextStyles.titleMedium
-                            .copyWith(color: Colors.white),
-                      ),
-                    ),
-                  ),
                 ],
+              ),
+            ),
+            // Branding strip at the very bottom
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                height: 16,
+                color: Colors.black.withValues(alpha: 0.75),
+                alignment: Alignment.center,
+                child: Text('YOUR BRAND',
+                    style: AppTextStyles.labelSmall.copyWith(
+                      color: Colors.white.withValues(alpha: 0.7),
+                      fontSize: 7.5,
+                      letterSpacing: 1,
+                    )),
               ),
             ),
           ],
@@ -144,539 +815,315 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 }
 
-// ── Page 1 — Brand intro + mock phone ────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════
+// SLIDE 3 — The Ask
+// A completed-reel moment + WhatsApp share + trust row. Converts.
+// ════════════════════════════════════════════════════════════════════════════
 
-class _Page1 extends StatelessWidget {
-  const _Page1({required this.pulse});
-  final Animation<double> pulse;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 28),
-      child: Column(
-        children: [
-          const SizedBox(height: 12),
-
-          // Mock phone preview
-          Expanded(
-            child: Center(
-              child: AnimatedBuilder(
-                animation: pulse,
-                builder: (_, __) => Container(
-                  width: 160,
-                  height: 260,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(28),
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF1E0A4A), Color(0xFF2D1B69)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    border: Border.all(
-                      color: AppColors.primary
-                          .withValues(alpha: 0.3 + 0.3 * pulse.value),
-                      width: 2,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.primary
-                            .withValues(alpha: 0.15 + 0.15 * pulse.value),
-                        blurRadius: 40,
-                        spreadRadius: 4,
-                      ),
-                    ],
-                  ),
-                  child: Stack(
-                    children: [
-                      // Mock slide image placeholder
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(26),
-                        child: Container(
-                          decoration: const BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                Color(0xFF0F0630),
-                                Color(0xFF1E0A4A),
-                                Color(0xFF2D1B69),
-                              ],
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                            ),
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              // Store icon
-                              Container(
-                                width: 56,
-                                height: 56,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: AppColors.primary
-                                      .withValues(alpha: 0.2),
-                                  border: Border.all(
-                                      color: AppColors.primary
-                                          .withValues(alpha: 0.5)),
-                                ),
-                                child: const Icon(Icons.store_rounded,
-                                    color: AppColors.primary, size: 28),
-                              ),
-                              const SizedBox(height: 12),
-                              // Mock text lines
-                              Container(
-                                width: 100,
-                                height: 10,
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.8),
-                                  borderRadius: BorderRadius.circular(5),
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Container(
-                                width: 70,
-                                height: 8,
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.4),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              // Offer badge
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: AppColors.secondary,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text('50% OFF',
-                                    style: AppTextStyles.labelSmall.copyWith(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w800,
-                                        fontSize: 11)),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      // Bottom branding strip
-                      Positioned(
-                        bottom: 0,
-                        left: 0,
-                        right: 0,
-                        child: Container(
-                          height: 36,
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.7),
-                            borderRadius: const BorderRadius.vertical(
-                                bottom: Radius.circular(26)),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.store_rounded,
-                                  color: AppColors.primary, size: 12),
-                              const SizedBox(width: 4),
-                              Text('My Shop',
-                                  style: AppTextStyles.labelSmall.copyWith(
-                                      fontSize: 9, color: Colors.white70)),
-                            ],
-                          ),
-                        ),
-                      ),
-                      // Play button overlay
-                      Center(
-                        child: Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white.withValues(alpha: 0.15),
-                          ),
-                          child: const Icon(Icons.play_arrow_rounded,
-                              color: Colors.white, size: 22),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 28),
-          // Logo row
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _ReelLogoMini(),
-              const SizedBox(width: 8),
-              Text('PromoReel',
-                  style: AppTextStyles.titleLarge.copyWith(
-                      fontWeight: FontWeight.w800, fontSize: 20)),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Make shop videos in 60 seconds',
-            style: AppTextStyles.headlineSmall
-                .copyWith(fontWeight: FontWeight.w700),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Daily offers, new stock, greetings — share directly to WhatsApp Status',
-            style: AppTextStyles.bodyMedium
-                .copyWith(color: AppColors.textSecondary),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 20),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Page 2 — Motion styles showcase ──────────────────────────────────────────
-
-class _Page2 extends StatelessWidget {
-  const _Page2();
-
-  static const _styles = [
-    ('Slow Zoom', Icons.zoom_in_rounded, Color(0xFF7C4DFF), 'Jewelry'),
-    ('Bold Slide', Icons.swipe_right_rounded, Color(0xFFFF6E40), 'Electronics'),
-    ('Beat Sync', Icons.graphic_eq_rounded, Color(0xFF00C853), 'Offers'),
-    ('Caption Stack', Icons.layers_rounded, Color(0xFFFFB300), 'Real Estate'),
-    ('Ken Burns', Icons.panorama_rounded, Color(0xFF29B6F6), 'Wedding'),
-    ('Flash Reveal', Icons.flash_on_rounded, Color(0xFFE53935), 'Sales'),
-  ];
+class _SlideAsk extends StatelessWidget {
+  const _SlideAsk();
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 28),
+      padding: const EdgeInsets.symmetric(horizontal: PrSpacing.xl),
       child: Column(
         children: [
-          const SizedBox(height: 16),
-
-          // Style grid
-          Expanded(
-            child: GridView.count(
-              crossAxisCount: 3,
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
-              physics: const NeverScrollableScrollPhysics(),
-              padding: EdgeInsets.zero,
-              children: _styles.map((s) {
-                final (name, icon, color, tag) = s;
-                return Container(
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                        color: color.withValues(alpha: 0.3), width: 1),
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: color.withValues(alpha: 0.15),
-                        ),
-                        child: Icon(icon, color: color, size: 20),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(name,
-                          style: AppTextStyles.labelSmall.copyWith(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.textPrimary),
-                          textAlign: TextAlign.center),
-                      const SizedBox(height: 2),
-                      Text(tag,
-                          style: AppTextStyles.labelSmall.copyWith(
-                              fontSize: 8, color: color),
-                          textAlign: TextAlign.center),
-                    ],
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-
-          const SizedBox(height: 24),
-          Text(
-            '12 Professional Motion Styles',
-            style: AppTextStyles.headlineSmall
-                .copyWith(fontWeight: FontWeight.w700),
+          const Spacer(flex: 1),
+          // Trio of channels — WhatsApp leads, IG + shorts follow
+          const _ShareTrio(),
+          const Spacer(flex: 1),
+          Text('YOUR TURN', style: AppTextStyles.kicker),
+          const SizedBox(height: PrSpacing.xs + 2),
+          RichText(
             textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'From subtle jewelry elegance to energetic sale announcements — a perfect style for every business',
-            style: AppTextStyles.bodyMedium
-                .copyWith(color: AppColors.textSecondary),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 20),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Page 3 — WhatsApp share + free trial ─────────────────────────────────────
-
-class _Page3 extends StatelessWidget {
-  const _Page3();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 28),
-      child: Column(
-        children: [
-          const SizedBox(height: 20),
-
-          // WhatsApp share illustration
-          Expanded(
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Phone → WhatsApp flow
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // Phone icon
-                      Container(
-                        width: 72,
-                        height: 72,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppColors.primary.withValues(alpha: 0.15),
-                          border: Border.all(
-                              color: AppColors.primary.withValues(alpha: 0.4)),
-                        ),
-                        child: const Icon(Icons.phone_android_rounded,
-                            color: AppColors.primary, size: 34),
-                      ),
-                      // Arrow
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: Row(
-                          children: List.generate(
-                            3,
-                            (i) => Container(
-                              width: 8,
-                              height: 8,
-                              margin: const EdgeInsets.only(right: 4),
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: AppColors.secondary
-                                    .withValues(alpha: 0.3 + i * 0.25),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      // WhatsApp icon
-                      Container(
-                        width: 72,
-                        height: 72,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: const Color(0xFF25D366).withValues(alpha: 0.15),
-                          border: Border.all(
-                              color: const Color(0xFF25D366)
-                                  .withValues(alpha: 0.4)),
-                        ),
-                        child: const Icon(Icons.chat_rounded,
-                            color: Color(0xFF25D366), size: 34),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 32),
-
-                  // Feature chips
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    alignment: WrapAlignment.center,
-                    children: [
-                      _Chip(Icons.offline_bolt_rounded, 'Works offline',
-                          AppColors.primary),
-                      _Chip(Icons.hd_rounded, '720p HD video',
-                          AppColors.secondary),
-                      _Chip(Icons.no_photography_rounded, 'No watermark',
-                          AppColors.success),
-                      _Chip(Icons.timer_rounded, 'Ready in 30s',
-                          const Color(0xFFFFB300)),
-                    ],
-                  ),
-                ],
+            text: TextSpan(
+              style: AppTextStyles.displayMedium.copyWith(
+                fontSize: 32,
+                color: Theme.of(context).colorScheme.onSurface,
               ),
-            ),
-          ),
-
-          // Free trial badge
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  AppColors.secondary.withValues(alpha: 0.15),
-                  AppColors.primary.withValues(alpha: 0.1),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                  color: AppColors.secondary.withValues(alpha: 0.3)),
-            ),
-            child: Row(
               children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.secondary.withValues(alpha: 0.2),
-                  ),
-                  child: const Icon(Icons.workspace_premium_rounded,
-                      color: AppColors.secondary, size: 20),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('3-day free Pro trial',
-                          style: AppTextStyles.titleSmall
-                              .copyWith(fontWeight: FontWeight.w800)),
-                      Text('All features unlocked — no credit card needed',
-                          style: AppTextStyles.bodySmall
-                              .copyWith(color: AppColors.textSecondary)),
-                    ],
+                const TextSpan(text: 'Let\'s post your\n'),
+                TextSpan(
+                  text: 'first reel.',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontStyle: FontStyle.italic,
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 16),
-
+          const SizedBox(height: PrSpacing.sm),
           Text(
-            'Share to WhatsApp in One Tap',
-            style: AppTextStyles.headlineSmall
-                .copyWith(fontWeight: FontWeight.w700),
+            'One tap to WhatsApp Status, Reels, or Shorts.\nNothing uploads. Nothing watermarks. Ever.',
+            style: AppTextStyles.bodyLarge.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              height: 1.55,
+            ),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 10),
-          Text(
-            'Export directly to WhatsApp Status, no extra steps',
-            style: AppTextStyles.bodyMedium
-                .copyWith(color: AppColors.textSecondary),
-            textAlign: TextAlign.center,
+          const SizedBox(height: PrSpacing.lg),
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: PrSpacing.xs,
+            runSpacing: PrSpacing.xs,
+            children: const [
+              _TrustChip(icon: Icons.offline_bolt_rounded, label: 'Offline'),
+              _TrustChip(icon: Icons.hd_rounded, label: '720p HD'),
+              _TrustChip(
+                  icon: Icons.cloud_off_rounded, label: 'No upload'),
+              _TrustChip(
+                  icon: Icons.account_circle_outlined, label: 'No account'),
+            ],
           ),
-          const SizedBox(height: 20),
+          const Spacer(flex: 1),
         ],
       ),
     );
   }
 }
 
-class _Chip extends StatelessWidget {
-  const _Chip(this.icon, this.label, this.color);
-  final IconData icon;
-  final String label;
-  final Color color;
+class _ShareTrio extends StatelessWidget {
+  const _ShareTrio();
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding:
+          const EdgeInsets.symmetric(horizontal: PrSpacing.lg, vertical: PrSpacing.md),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
+        color: Theme.of(context).colorScheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(PrRadius.xl),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outlineVariant,
+          width: 0.7,
+        ),
+      ),
+      child: Column(
+        children: [
+          // Top row — reel thumb
+          Container(
+            width: 110,
+            height: 180,
+            decoration: BoxDecoration(
+              color: Colors.black,
+              borderRadius: BorderRadius.circular(PrRadius.md),
+              border: Border.all(
+                color: AppColors.brandEmber.withValues(alpha: 0.5),
+                width: 1.3,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.brandEmber.withValues(alpha: 0.25),
+                  blurRadius: 28,
+                  spreadRadius: -4,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(PrRadius.md - 2),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF251A11), Color(0xFF0A0807)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: Icon(PrIcons.check,
+                        color: AppColors.signalLeaf, size: 14),
+                  ),
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withValues(alpha: 0.18),
+                        border:
+                            Border.all(color: Colors.white.withValues(alpha: 0.7)),
+                      ),
+                      child: const Icon(PrIcons.play,
+                          color: Colors.white, size: 20),
+                    ),
+                  ),
+                  Positioned(
+                    bottom: 8,
+                    left: 6,
+                    right: 6,
+                    child: Text('READY',
+                        textAlign: TextAlign.center,
+                        style: AppTextStyles.labelSmall.copyWith(
+                          color: AppColors.brandEmberSoft,
+                          fontSize: 8,
+                          letterSpacing: 1.8,
+                          fontWeight: FontWeight.w800,
+                        )),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: PrSpacing.md),
+          // Three destination icons
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _ShareIcon(
+                color: const Color(0xFF25D366),
+                icon: Icons.chat_rounded,
+                label: 'WhatsApp',
+                prominent: true,
+              ),
+              const SizedBox(width: PrSpacing.sm),
+              _ShareIcon(
+                color: const Color(0xFFE1306C),
+                icon: Icons.camera_alt_rounded,
+                label: 'Reels',
+              ),
+              const SizedBox(width: PrSpacing.sm),
+              _ShareIcon(
+                color: const Color(0xFFFF0000),
+                icon: Icons.play_arrow_rounded,
+                label: 'Shorts',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ShareIcon extends StatelessWidget {
+  const _ShareIcon({
+    required this.color,
+    required this.icon,
+    required this.label,
+    this.prominent = false,
+  });
+  final Color color;
+  final IconData icon;
+  final String label;
+  final bool prominent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          width: prominent ? 44 : 36,
+          height: prominent ? 44 : 36,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: color.withValues(alpha: prominent ? 0.9 : 0.18),
+            border: Border.all(
+              color: color.withValues(alpha: prominent ? 1 : 0.35),
+              width: prominent ? 0 : 1,
+            ),
+            boxShadow: prominent
+                ? [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.4),
+                      blurRadius: 20,
+                      spreadRadius: -2,
+                    ),
+                  ]
+                : null,
+          ),
+          child: Icon(
+            icon,
+            size: prominent ? 20 : 16,
+            color: prominent ? Colors.white : color,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(label,
+            style: AppTextStyles.labelSmall.copyWith(
+              color: prominent
+                  ? color
+                  : Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 10,
+              fontWeight: prominent ? FontWeight.w800 : FontWeight.w600,
+            )),
+      ],
+    );
+  }
+}
+
+class _TrustChip extends StatelessWidget {
+  const _TrustChip({required this.icon, required this.label});
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(
+          horizontal: PrSpacing.sm, vertical: 6),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(PrRadius.pill),
+        border: Border.all(color: scheme.outlineVariant, width: 0.7),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: color),
-          const SizedBox(width: 6),
+          Icon(icon, size: 13, color: AppColors.signalLeaf),
+          const SizedBox(width: 5),
           Text(label,
-              style: AppTextStyles.labelSmall
-                  .copyWith(color: color, fontWeight: FontWeight.w600)),
+              style: AppTextStyles.labelSmall.copyWith(
+                color: scheme.onSurface,
+                fontWeight: FontWeight.w700,
+              )),
         ],
       ),
     );
   }
 }
 
-// ── Mini reel logo ────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════
+// Sprocket divider — the "this is cinema" editorial tell.
+// ════════════════════════════════════════════════════════════════════════════
 
-class _ReelLogoMini extends StatelessWidget {
+class _SprocketDivider extends StatelessWidget {
+  const _SprocketDivider();
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 32,
-      height: 32,
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF9C6FFF), AppColors.primary, Color(0xFF5E35B1)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _dot(), _gap(), _dot(), _gap(),
+        const SizedBox(width: 10),
+        Container(
+          width: 28,
+          height: 1,
+          color: AppColors.brandEmber.withValues(alpha: 0.6),
         ),
-        borderRadius: BorderRadius.circular(9),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.4),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: CustomPaint(painter: _MiniReelPainter()),
+        const SizedBox(width: 10),
+        _dot(), _gap(), _dot(),
+      ],
     );
   }
-}
 
-class _MiniReelPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final cx = size.width / 2;
-    final cy = size.height / 2;
-    final ro = size.width * 0.30;
-    final ri = size.width * 0.10;
-    final white = Paint()..color = Colors.white;
-    final bg = Paint()..color = const Color(0xFF7C4DFF);
-
-    canvas.drawCircle(Offset(cx, cy), ro, white);
-    final holeR = size.width * 0.055;
-    final ringR = size.width * 0.195;
-    for (int i = 0; i < 6; i++) {
-      final a = (i * 60 - 90) * pi / 180;
-      canvas.drawCircle(
-          Offset(cx + ringR * cos(a), cy + ringR * sin(a)), holeR, bg);
-    }
-    canvas.drawCircle(Offset(cx, cy), ri, bg);
-
-    final tri = Paint()..color = const Color(0xFFFF6E40);
-    final th = size.width * 0.13;
-    final tw = size.width * 0.115;
-    final path = Path()
-      ..moveTo(cx - tw * 0.15, cy - th / 2)
-      ..lineTo(cx - tw * 0.15 + tw, cy)
-      ..lineTo(cx - tw * 0.15, cy + th / 2)
-      ..close();
-    canvas.drawPath(path, tri);
-  }
-
-  @override
-  bool shouldRepaint(_MiniReelPainter old) => false;
+  Widget _dot() => Container(
+        width: 4,
+        height: 4,
+        decoration: BoxDecoration(
+          color: AppColors.brandEmber,
+          shape: BoxShape.circle,
+        ),
+      );
+  Widget _gap() => const SizedBox(width: 6);
 }

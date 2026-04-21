@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
+import '../../core/ui/aurora_backdrop.dart';
+import '../../core/ui/pr_icons.dart';
+import '../../core/ui/tokens.dart';
 import '../../providers/subscription_provider.dart';
 
 class PaywallScreen extends ConsumerStatefulWidget {
@@ -63,68 +66,98 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen>
     final current = ref.watch(subscriptionProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.bgDark,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Close + current plan
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 8, 0),
-              child: Row(
-                children: [
-                  if (current.isPro)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: AppColors.proGoldContainer,
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(
-                            color: AppColors.proGold.withValues(alpha: 0.5)),
+      body: Stack(
+        children: [
+          // Dim aurora behind the paywall — gold-biased so the page feels premium
+          Positioned.fill(
+            child: Opacity(
+              opacity: 0.5,
+              child: AuroraBackdrop(intensity: 0.8, warmHue: true),
+            ),
+          ),
+          SafeArea(
+            child: Column(
+              children: [
+                // Close + current plan
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                      PrSpacing.md, PrSpacing.xxs, PrSpacing.xs, 0),
+                  child: Row(
+                    children: [
+                      if (current.isPro)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: PrSpacing.xs + 2,
+                              vertical: PrSpacing.xxs),
+                          decoration: BoxDecoration(
+                            color: AppColors.proAurumSoft,
+                            borderRadius: BorderRadius.circular(PrRadius.xs),
+                            border: Border.all(
+                                color: AppColors.proAurum
+                                    .withValues(alpha: 0.5)),
+                          ),
+                          child: Text(
+                            'Current: ${current.displayName}',
+                            style: AppTextStyles.labelSmall.copyWith(
+                                color: AppColors.proAurum),
+                          ),
+                        ),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(PrIcons.close),
+                        onPressed: () => context.pop(),
                       ),
-                      child: Text('Current: ${current.displayName}',
-                          style: AppTextStyles.labelSmall.copyWith(
-                              color: AppColors.proGold, fontSize: 11)),
-                    ),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded,
-                        color: AppColors.textSecondary),
-                    onPressed: () => context.pop(),
+                    ],
                   ),
-                ],
-              ),
-            ),
+                ),
 
-            // Header
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
-              child: Column(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: RadialGradient(colors: [
-                        AppColors.proGold.withValues(alpha: 0.25),
-                        Colors.transparent,
-                      ]),
-                    ),
-                    child: const Icon(Icons.workspace_premium_rounded,
-                        color: AppColors.proGold, size: 46),
+                // Header
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                      PrSpacing.xl, PrSpacing.xxs, PrSpacing.xl, 0),
+                  child: Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(PrSpacing.sm + 2),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(colors: [
+                            AppColors.proAurum.withValues(alpha: 0.3),
+                            Colors.transparent,
+                          ]),
+                        ),
+                        child: Icon(PrIcons.pro,
+                            color: AppColors.proAurum, size: 46),
+                      ),
+                      const SizedBox(height: PrSpacing.xs + 2),
+                      Text('BUILD NO. ${DateTime.now().year}',
+                          style: AppTextStyles.kicker.copyWith(
+                              color: AppColors.proAurum,
+                              letterSpacing: 3)),
+                      const SizedBox(height: PrSpacing.xs),
+                      RichText(
+                        textAlign: TextAlign.center,
+                        text: TextSpan(
+                          style: AppTextStyles.displayMedium,
+                          children: [
+                            const TextSpan(text: 'Unlock '),
+                            TextSpan(
+                              text: 'everything.',
+                              style: TextStyle(
+                                  color: AppColors.proAurum,
+                                  fontStyle: FontStyle.italic),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: PrSpacing.xs),
+                      Text('No limits. No watermarks. Pure results.',
+                          style: AppTextStyles.bodyMedium.copyWith(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant),
+                          textAlign: TextAlign.center),
+                    ],
                   ),
-                  const SizedBox(height: 10),
-                  Text('Unlock PromoReel',
-                      style: AppTextStyles.displayMedium,
-                      textAlign: TextAlign.center),
-                  const SizedBox(height: 6),
-                  Text('No limits. No watermarks. Pure results.',
-                      style: AppTextStyles.bodyMedium
-                          .copyWith(color: AppColors.textSecondary),
-                      textAlign: TextAlign.center),
-                ],
-              ),
-            ),
+                ),
 
             const SizedBox(height: 16),
 
@@ -190,6 +223,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen>
             ),
           ],
         ),
+      ),
+        ],
       ),
     );
   }
