@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/constants/app_constants.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 
@@ -9,6 +10,7 @@ class ProBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!kSubscriptionEnabled) return const SizedBox.shrink();
     final isPro = label != 'FREE';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -38,7 +40,7 @@ class ProLockOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (isPro) return child;
+    if (!kSubscriptionEnabled || isPro) return child;
     return Stack(
       children: [
         child,

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  PromoReel launcher icon foreground — the film reel brandmark.
+
+  Drawn to Android's 108×108dp adaptive-icon canvas, with all content kept
+  inside the inner 66dp safe zone (Android may mask to a circle/squircle on
+  some launchers). Colors match the in-app ReelMark at lib/core/ui/reel_mark.dart.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Outer ring (reel flange) — ember -->
+    <path
+        android:pathData="M 54,54 m -29.04,0 a 29.04,29.04 0 1,1 58.08,0 a 29.04,29.04 0 1,1 -58.08,0"
+        android:strokeColor="#F2A848"
+        android:strokeWidth="3.96"
+        android:fillColor="#00000000" />
+
+    <!-- Hub seam ring — deep ember -->
+    <path
+        android:pathData="M 54,54 m -7.92,0 a 7.92,7.92 0 1,1 15.84,0 a 7.92,7.92 0 1,1 -15.84,0"
+        android:strokeColor="#B8772A"
+        android:strokeWidth="1.3"
+        android:fillColor="#00000000" />
+
+    <!-- Central hub -->
+    <path
+        android:fillColor="#F2A848"
+        android:pathData="M 54,54 m -5.28,0 a 5.28,5.28 0 1,0 10.56,0 a 5.28,5.28 0 1,0 -10.56,0 Z" />
+
+    <!-- 5 sprocket cutouts — soft ember, arranged evenly around the inner ring -->
+    <path
+        android:fillColor="#F7C688"
+        android:pathData="M 54,37.5 m -3.96,0 a 3.96,3.96 0 1,0 7.92,0 a 3.96,3.96 0 1,0 -7.92,0 Z" />
+    <path
+        android:fillColor="#F7C688"
+        android:pathData="M 69.7,48.9 m -3.96,0 a 3.96,3.96 0 1,0 7.92,0 a 3.96,3.96 0 1,0 -7.92,0 Z" />
+    <path
+        android:fillColor="#F7C688"
+        android:pathData="M 63.7,67.35 m -3.96,0 a 3.96,3.96 0 1,0 7.92,0 a 3.96,3.96 0 1,0 -7.92,0 Z" />
+    <path
+        android:fillColor="#F7C688"
+        android:pathData="M 44.3,67.35 m -3.96,0 a 3.96,3.96 0 1,0 7.92,0 a 3.96,3.96 0 1,0 -7.92,0 Z" />
+    <path
+        android:fillColor="#F7C688"
+        android:pathData="M 38.3,48.9 m -3.96,0 a 3.96,3.96 0 1,0 7.92,0 a 3.96,3.96 0 1,0 -7.92,0 Z" />
+
+</vector>

@@ -19,6 +19,10 @@ dependencies:
   # Video / FFmpeg
   ffmpeg_kit_flutter_new: ^4.1.0
 
+  # Custom gallery grid (Android ≤12 path — Android 13+ uses the system
+  # Photo Picker via image_picker below).
+  photo_manager: ^3.6.0
+
   # File handling
   path_provider: ^2.1.5
   path: ^1.9.0
@@ -40,6 +44,9 @@ dependencies:
   # Media picking (photos, videos, branding logo) — uses Android Photo Picker on 13+
   image_picker: ^1.1.2
 
+  # Runtime permission requests for the Android ≤12 gallery path.
+  permission_handler: ^11.3.1
+
   # In-app video playback
   video_player: ^2.9.2
 
@@ -58,8 +65,21 @@ dependencies:
   # Utilities
   uuid: ^4.5.1
   collection: ^1.19.0
+  device_info_plus: ^10.1.2
 
   cupertino_icons: ^1.0.8
+
+  # Typography — Fraunces (editorial serif display) + Manrope (body/UI) pulled at
+  # runtime. Avoids shipping font binaries; first load caches to disk.
+  google_fonts: ^6.2.1
+
+  # On-device subject segmentation — powers the "clean background" feature.
+  # Model is downloaded the first time it's used; no internet required for
+  # subsequent runs. Adds ~6 MB to the release APK.
+  google_mlkit_subject_segmentation: ^0.0.3
+
+  # Image decoding + re-encoding for the cutout composite (PNG in/out).
+  image: ^4.5.3
 
 dependency_overrides:
   record_platform_interface: 1.2.0

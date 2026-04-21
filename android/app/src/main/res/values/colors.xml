@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#7C4DFF</color>
+    <!-- Launcher icon background — warm surface (just above canvas) so the
+         reel has slight contrast on OLED pure-black launchers without
+         becoming a floating mark. Matches surfaceDark in app_colors.dart. -->
+    <color name="ic_launcher_background">#141110</color>
 </resources>

@@ -1,61 +1,143 @@
 import 'package:flutter/material.dart';
 
+/// PromoReel "Studio Cinematic" palette.
+///
+/// Warm blacks instead of blue-purple greys, an amber "cinema light" brand
+/// instead of violet, and a restrained tri-signal system (crimson/leaf/gold)
+/// for price/success/pro. The palette is intentionally narrow: any new color
+/// fights this system and should be justified.
+///
+/// Token names live on two axes:
+///   • *semantic role* (brand, surface, content, signal, pro)
+///   • *modulation* (base, raised, overlay, muted)
+///
+/// Legacy member names (primary, secondary, textPrimary…) are kept as
+/// forwarders so existing screens compile unchanged while we migrate.
 abstract final class AppColors {
-  // Primary — Electric Violet
-  static const primary = Color(0xFF7C4DFF);
-  static const primaryDark = Color(0xFF5E35B1);
-  static const primaryLight = Color(0xFFB39DDB);
-  static const primaryContainer = Color(0xFF2D1B69);
-  static const onPrimary = Color(0xFFFFFFFF);
+  // ── Brand: Ember ─────────────────────────────────────────────────────────
+  /// Signature cinema-light amber. Only for brand moments, CTAs, focus.
+  static const brandEmber = Color(0xFFF2A848);
+  static const brandEmberDeep = Color(0xFFB8772A);
+  static const brandEmberSoft = Color(0xFFF7C688);
+  static const brandEmberGlow = Color(0x33F2A848);
+  static const onBrand = Color(0xFF1A0E03);
 
-  // Secondary — Coral Orange
-  static const secondary = Color(0xFFFF6E40);
-  static const secondaryDark = Color(0xFFE64A19);
-  static const secondaryLight = Color(0xFFFFAB91);
-  static const secondaryContainer = Color(0xFF4D1A00);
-  static const onSecondary = Color(0xFFFFFFFF);
+  // ── Signals ──────────────────────────────────────────────────────────────
+  /// Crimson — sale, price, urgency. Not a generic error red.
+  static const signalCrimson = Color(0xFFE63E7A);
+  static const signalCrimsonSoft = Color(0xFF4A0F25);
 
-  // Backgrounds (dark theme)
-  static const bgDark = Color(0xFF0D0D1A);
-  static const bgSurface = Color(0xFF1A1A2E);
-  static const bgSurfaceVariant = Color(0xFF252540);
-  static const bgElevated = Color(0xFF2A2A45);
+  /// Leaf — success, confirmation, saved.
+  static const signalLeaf = Color(0xFF4ADE80);
+  static const signalLeafSoft = Color(0xFF0E3E23);
 
-  // Backgrounds (light theme)
-  static const bgLight = Color(0xFFF5F0FF);
-  static const bgSurfaceLight = Color(0xFFFFFFFF);
-  static const bgSurfaceVariantLight = Color(0xFFEDE7F6);
+  /// Amber warning (distinct from brand ember — slightly cooler, yellower).
+  static const signalAmber = Color(0xFFFFB547);
 
-  // Text (dark theme)
-  static const textPrimary = Color(0xFFFFFFFF);
-  static const textSecondary = Color(0xFFB0AFCC);
-  static const textDisabled = Color(0xFF606080);
-  static const textHint = Color(0xFF7070A0);
+  /// Sky — informational hints, "did you know" moments.
+  static const signalSky = Color(0xFF60A5FA);
 
-  // Text (light theme)
-  static const textPrimaryLight = Color(0xFF0D0D1A);
-  static const textSecondaryLight = Color(0xFF5C5C7A);
+  /// Error (destructive only — delete confirmations, failed exports).
+  static const signalError = Color(0xFFF87171);
+  static const signalErrorSoft = Color(0xFF4A1414);
 
-  // Semantic
-  static const success = Color(0xFF00C853);
-  static const successContainer = Color(0xFF003D17);
-  static const error = Color(0xFFFF5252);
-  static const errorContainer = Color(0xFF4D0000);
-  static const warning = Color(0xFFFFB300);
+  // ── Pro tier: Aurum ──────────────────────────────────────────────────────
+  /// Gold reserved for paid tier — never used for brand or signals.
+  static const proAurum = Color(0xFFF2C661);
+  static const proAurumDeep = Color(0xFFD4A234);
+  static const proAurumSoft = Color(0xFF3D2B00);
 
-  // Pro / Paywall
-  static const proGold = Color(0xFFFFB300);
-  static const proGoldContainer = Color(0xFF3D2B00);
-  static const proGoldLight = Color(0xFFFFE082);
+  // ── Dark surfaces (default) ──────────────────────────────────────────────
+  /// Canvas — the darkest layer, behind everything. Warm black.
+  static const canvasDark = Color(0xFF0A0807);
 
-  // Divider / Border
-  static const divider = Color(0xFF2E2E4A);
-  static const dividerLight = Color(0xFFE0D9F7);
-  static const border = Color(0xFF3A3A5C);
+  /// Base surface for content blocks.
+  static const surfaceDark = Color(0xFF141110);
 
-  // Overlay
-  static const scrim = Color(0x80000000);
-  static const brandingStrip = Color(0xCC0D0D1A);
-  static const cardGradientStart = Color(0x007C4DFF);
-  static const cardGradientEnd = Color(0x997C4DFF);
+  /// Raised — cards, sheets, modals.
+  static const surfaceRaisedDark = Color(0xFF1F1B1A);
+
+  /// Overlay — highest layer (tooltips, popovers).
+  static const surfaceOverlayDark = Color(0xFF2A2523);
+
+  /// Hairline — subtle separator, card borders.
+  static const hairlineDark = Color(0xFF2E2928);
+
+  /// Emphasis — stronger border, focus ring.
+  static const borderDark = Color(0xFF3A3634);
+
+  // ── Dark content ─────────────────────────────────────────────────────────
+  static const contentPrimaryDark = Color(0xFFF6F2EA);
+  static const contentSecondaryDark = Color(0xFFC9C2B5); // WCAG AA on canvas
+  static const contentMutedDark = Color(0xFF8B8478);
+  static const contentDisabledDark = Color(0xFF554F46);
+
+  // ── Light surfaces ───────────────────────────────────────────────────────
+  /// Warm cream canvas — not a cool lavender, not pure white.
+  static const canvasLight = Color(0xFFF7F3ED);
+  static const surfaceLight = Color(0xFFFFFFFF);
+  static const surfaceRaisedLight = Color(0xFFFCF8F1);
+  static const surfaceOverlayLight = Color(0xFFF2ECE1);
+  static const hairlineLight = Color(0xFFE6DED0);
+  static const borderLight = Color(0xFFD2C8B5);
+
+  // ── Light content ────────────────────────────────────────────────────────
+  static const contentPrimaryLight = Color(0xFF1C1815);
+  static const contentSecondaryLight = Color(0xFF605A52);
+  static const contentMutedLight = Color(0xFF938C81);
+  static const contentDisabledLight = Color(0xFFBCB4A7);
+
+  // ── Scrims & overlays ────────────────────────────────────────────────────
+  static const scrim = Color(0xB30A0807);
+  static const brandingStrip = Color(0xCC0A0807);
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // Legacy aliases — keep existing imports compiling until migration is done.
+  // Don't use these in new code. Map to the semantic tokens above.
+  // ═════════════════════════════════════════════════════════════════════════
+  static const primary = brandEmber;
+  static const primaryDark = brandEmberDeep;
+  static const primaryLight = brandEmberSoft;
+  static const primaryContainer = Color(0xFF3D2307);
+  static const onPrimary = onBrand;
+
+  static const secondary = signalCrimson;
+  static const secondaryDark = Color(0xFFB42860);
+  static const secondaryLight = Color(0xFFF38DB5);
+  static const secondaryContainer = signalCrimsonSoft;
+  static const onSecondary = Color(0xFFFFF5F9);
+
+  static const bgDark = canvasDark;
+  static const bgSurface = surfaceDark;
+  static const bgSurfaceVariant = surfaceRaisedDark;
+  static const bgElevated = surfaceOverlayDark;
+
+  static const bgLight = canvasLight;
+  static const bgSurfaceLight = surfaceLight;
+  static const bgSurfaceVariantLight = surfaceOverlayLight;
+
+  static const textPrimary = contentPrimaryDark;
+  static const textSecondary = contentSecondaryDark;
+  static const textDisabled = contentDisabledDark;
+  static const textHint = contentMutedDark;
+
+  static const textPrimaryLight = contentPrimaryLight;
+  static const textSecondaryLight = contentSecondaryLight;
+
+  static const success = signalLeaf;
+  static const successContainer = signalLeafSoft;
+  static const error = signalError;
+  static const errorContainer = signalErrorSoft;
+  static const warning = signalAmber;
+
+  static const proGold = proAurum;
+  static const proGoldContainer = proAurumSoft;
+  static const proGoldLight = Color(0xFFF9DDA0);
+
+  static const divider = hairlineDark;
+  static const dividerLight = hairlineLight;
+  static const border = borderDark;
+
+  static const cardGradientStart = Color(0x00F2A848);
+  static const cardGradientEnd = Color(0x99F2A848);
 }
