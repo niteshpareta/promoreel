@@ -423,8 +423,18 @@ class MediaEncoder {
           completer.complete(ExportResult.success(outputPath));
         } else {
           final logs = await session.getOutput() ?? '';
+          // Write the FULL FFmpeg output to a file so we can inspect it
+          // later — logcat truncates individual print() calls at ~4 KB,
+          // which hides the actual failure reason on complex filter graphs.
+          try {
+            final dumpPath = p.join(tmp, 'ffmpeg_last_error.txt');
+            await File(dumpPath).writeAsString(logs);
+            // ignore: avoid_print
+            print('[MediaEncoder] FAILED — full log at: $dumpPath');
+          } catch (_) {}
           // ignore: avoid_print
-          print('[MediaEncoder] FAILED:\n$logs');
+          print('[MediaEncoder] FAILED (truncated):\n${logs.substring(
+              logs.length > 3000 ? logs.length - 3000 : 0)}');
           final errorLine = logs
                   .split('\n')
                   .where((l) =>

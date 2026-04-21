@@ -53,29 +53,34 @@ class MotionStyleEngine {
     switch (motion) {
       case _Motion.none:
         return '';
+      // NOTE: FFmpeg 8.0 tightened the crop filter's expression evaluator —
+      // expressions referencing `t` (time) now require `eval=frame` to be
+      // re-evaluated per frame. Default `eval=init` rejects `t` because
+      // there is no time-of-frame at init. All time-dependent crops below
+      // therefore end with `:eval=frame`.
       case _Motion.zoomInStandard:
         return ",crop='iw/(1+0.15*t/$dur)':'ih/(1+0.15*t/$dur)':"
-            "'(iw-ow)/2':'(ih-oh)/2',scale=$outW:$outH";
+            "'(iw-ow)/2':'(ih-oh)/2':0:1:eval=frame,scale=$outW:$outH";
       case _Motion.zoomInSubtle:
         return ",crop='iw/(1+0.08*t/$dur)':'ih/(1+0.08*t/$dur)':"
-            "'(iw-ow)/2':'(ih-oh)/2',scale=$outW:$outH";
+            "'(iw-ow)/2':'(ih-oh)/2':0:1:eval=frame,scale=$outW:$outH";
       case _Motion.kenBurnsPan:
         // Alternate pan direction per slide so consecutive slides don't feel identical.
         if (slideIdx.isEven) {
-          return ",crop='iw/1.15':'ih/1.15':'(iw-ow)*t/$dur':'(ih-oh)/2',"
-              "scale=$outW:$outH";
+          return ",crop='iw/1.15':'ih/1.15':'(iw-ow)*t/$dur':'(ih-oh)/2':"
+              "0:1:eval=frame,scale=$outW:$outH";
         } else {
-          return ",crop='iw/1.15':'ih/1.15':'(iw-ow)*(1-t/$dur)':'(ih-oh)/2',"
-              "scale=$outW:$outH";
+          return ",crop='iw/1.15':'ih/1.15':'(iw-ow)*(1-t/$dur)':'(ih-oh)/2':"
+              "0:1:eval=frame,scale=$outW:$outH";
         }
       case _Motion.quickPulse:
         return ",crop='iw/(1.05-0.05*min(t,0.3)/0.3)':"
             "'ih/(1.05-0.05*min(t,0.3)/0.3)':"
-            "'(iw-ow)/2':'(ih-oh)/2',scale=$outW:$outH";
+            "'(iw-ow)/2':'(ih-oh)/2':0:1:eval=frame,scale=$outW:$outH";
       case _Motion.popPulse:
         return ",crop='iw/(1.12-0.12*min(t,0.45)/0.45)':"
             "'ih/(1.12-0.12*min(t,0.45)/0.45)':"
-            "'(iw-ow)/2':'(ih-oh)/2',scale=$outW:$outH";
+            "'(iw-ow)/2':'(ih-oh)/2':0:1:eval=frame,scale=$outW:$outH";
     }
   }
 
