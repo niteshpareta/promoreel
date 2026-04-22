@@ -61,6 +61,93 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
     state = state!.withFrameBadgeSize(index, size);
   }
 
+  void setFrameCaptionStyle(int index, String styleId) {
+    if (state == null) return;
+    state = state!.withFrameCaptionStyle(index, styleId);
+  }
+
+  /// Apply the same caption style to every frame.
+  void setAllCaptionStyles(String styleId) {
+    if (state == null) return;
+    final n = state!.assetPaths.length;
+    state = state!.copyWith(frameCaptionStyles: List.filled(n, styleId));
+  }
+
+  void setFrameCaptionFont(int index, String family) {
+    if (state == null) return;
+    state = state!.withFrameCaptionFont(index, family);
+  }
+
+  void setFrameCaptionTextColor(int index, int argb) {
+    if (state == null) return;
+    state = state!.withFrameCaptionTextColor(index, argb);
+  }
+
+  void setFrameCaptionPillColor(int index, int argb) {
+    if (state == null) return;
+    state = state!.withFrameCaptionPillColor(index, argb);
+  }
+
+  void setFrameCaptionEffect(int index, String effect) {
+    if (state == null) return;
+    state = state!.withFrameCaptionEffect(index, effect);
+  }
+
+  void setFrameCaptionUppercase(int index, bool value) {
+    if (state == null) return;
+    state = state!.withFrameCaptionUppercase(index, value);
+  }
+
+  void setFrameCaptionRotation(int index, int degrees) {
+    if (state == null) return;
+    state = state!.withFrameCaptionRotation(index, degrees);
+  }
+
+  void setFrameOfferBadgeStyle(int index, String styleId) {
+    if (state == null) return;
+    state = state!.withFrameOfferBadgeStyle(index, styleId);
+  }
+
+  void setFrameOfferBadgeFillColor(int index, int argb) {
+    if (state == null) return;
+    state = state!.withFrameOfferBadgeFillColor(index, argb);
+  }
+
+  void setFrameOfferBadgeTextColor(int index, int argb) {
+    if (state == null) return;
+    state = state!.withFrameOfferBadgeTextColor(index, argb);
+  }
+
+  void setFrameOfferBadgeAnim(int index, String anim) {
+    if (state == null) return;
+    state = state!.withFrameOfferBadgeAnim(index, anim);
+  }
+
+  /// Copy the full badge configuration (text + style preset + fill/text
+  /// colour overrides + entrance animation) from frame [fromIndex] to
+  /// every other frame. Used by the "Apply to all frames" link under the
+  /// Badge section — mirrors `applyToAll` for captions.
+  void applyBadgeToAll(int fromIndex) {
+    final p = state;
+    if (p == null) return;
+    final n = p.assetPaths.length;
+    if (fromIndex < 0 || fromIndex >= n) return;
+    final text = fromIndex < p.frameOfferBadges.length
+        ? p.frameOfferBadges[fromIndex]
+        : '';
+    final styleId = p.offerBadgeStyleIdFor(fromIndex);
+    final fill = p.offerBadgeFillColorOverrideFor(fromIndex);
+    final textColor = p.offerBadgeTextColorOverrideFor(fromIndex);
+    final anim = p.offerBadgeAnimFor(fromIndex);
+    state = p.copyWith(
+      frameOfferBadges:          List.filled(n, text),
+      frameOfferBadgeStyles:     List.filled(n, styleId),
+      frameOfferBadgeFillColors: List.filled(n, fill),
+      frameOfferBadgeTextColors: List.filled(n, textColor),
+      frameOfferBadgeAnims:      List.filled(n, anim),
+    );
+  }
+
   void setFrameBgRemoval(int index, bool enabled) {
     if (state == null) return;
     state = state!.withFrameBgRemoval(index, enabled);
