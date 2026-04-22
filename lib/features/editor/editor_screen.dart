@@ -13,15 +13,19 @@ import '../../core/ui/haptics.dart';
 import '../../core/ui/pr_button.dart';
 import '../../core/ui/pr_icons.dart';
 import '../../core/ui/tokens.dart';
+import '../../data/models/branding_preset.dart';
+import '../../data/models/caption_style.dart';
 import '../../data/models/export_format.dart';
 import '../../data/models/motion_style.dart';
 import '../../data/models/video_project.dart';
+import '../../engine/text_renderer.dart' show googleFontsStyleFor;
 import '../../features/overlays/countdown_sheet.dart';
 import '../../features/overlays/qr_overlay_sheet.dart';
 import '../../features/shared/widgets/no_project_fallback.dart';
 import '../../providers/branding_provider.dart';
 import '../../providers/drafts_provider.dart';
 import '../../providers/project_provider.dart';
+import '../preview/timeline_player.dart';
 import '../voiceover/voiceover_sheet.dart';
 
 class EditorScreen extends ConsumerStatefulWidget {
@@ -446,15 +450,40 @@ class _PreviewCanvas extends StatefulWidget {
   final VideoProject project;
   final int currentIndex;
   final void Function(int) onIndexChanged;
-  final dynamic branding;
+  final BrandingPreset? branding;
 
   @override
   State<_PreviewCanvas> createState() => _PreviewCanvasState();
 }
 
-class _PreviewCanvasState extends State<_PreviewCanvas> {
+class _PreviewCanvasState extends State<_PreviewCanvas>
+    with SingleTickerProviderStateMixin {
   // Cache video thumbnails: path → Uint8List
   final Map<String, Uint8List?> _thumbCache = {};
+
+  /// Drives the entrance-animation replay on the preview. 0 → 1 during
+  /// play; sits at 1 when settled so the caption appears normally.
+  AnimationController? _entranceCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _entranceCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )
+      ..addListener(() => setState(() {}))
+      ..value = 1.0;
+    // Auto-play on first open so users see the animation without
+    // hunting for a button.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _replayEntrance());
+  }
+
+  @override
+  void dispose() {
+    _entranceCtrl?.dispose();
+    super.dispose();
+  }
 
   @override
   void didUpdateWidget(_PreviewCanvas old) {
@@ -463,6 +492,34 @@ class _PreviewCanvasState extends State<_PreviewCanvas> {
     final maxIdx = widget.project.assetPaths.length - 1;
     if (widget.currentIndex > maxIdx) {
       widget.onIndexChanged(maxIdx.clamp(0, maxIdx));
+    }
+    // Replay when the user navigates to a different frame.
+    if (old.currentIndex != widget.currentIndex) {
+      _replayEntrance();
+    }
+  }
+
+  void _replayEntrance() {
+    final c = _entranceCtrl;
+    if (c == null) return;
+    c.duration = _entranceDuration(widget.project.textAnimStyle);
+    c
+      ..value = 0.0
+      ..forward();
+  }
+
+  Duration _entranceDuration(String style) {
+    switch (style) {
+      case 'fade':
+      case 'slide_up':
+      case 'wipe':
+        return const Duration(milliseconds: 350);
+      case 'pop':
+        return const Duration(milliseconds: 300);
+      case 'typewriter':
+        return const Duration(milliseconds: 800);
+      default:
+        return const Duration(milliseconds: 300);
     }
   }
 
@@ -492,9 +549,77 @@ class _PreviewCanvasState extends State<_PreviewCanvas> {
             _buildCaptionOverlay(),
             if (widget.branding != null) _buildBrandingStrip(),
             if (widget.project.assetPaths.length > 1) _buildNavDots(),
+            _buildPlayFullChip(),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildPlayFullChip() {
+    return Positioned(
+      top: 10,
+      right: 10,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: () {
+            PrHaptics.tap();
+            _openTimelinePlayer();
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              color: AppColors.brandEmber.withValues(alpha: 0.95),
+              borderRadius: BorderRadius.circular(999),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  blurRadius: 8,
+                ),
+              ],
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.play_arrow_rounded,
+                    color: Colors.white, size: 18),
+                SizedBox(width: 4),
+                Text('Play preview',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openTimelinePlayer() {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black,
+      builder: (dialogCtx) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
+          child: AspectRatio(
+            aspectRatio: widget.project.exportFormat.aspectRatio,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(18),
+              child: TimelinePlayer(
+                project: widget.project,
+                branding: widget.branding,
+                onClose: () => Navigator.pop(dialogCtx),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -593,34 +718,146 @@ class _PreviewCanvasState extends State<_PreviewCanvas> {
   }
 
   Widget _buildCaptionOverlay() {
-    final caption = widget.currentIndex < widget.project.frameCaptions.length
-        ? widget.project.frameCaptions[widget.currentIndex]
-        : '';
-    if (caption.isEmpty) return const SizedBox.shrink();
-    return Stack(children: [
-      Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Colors.transparent, Color(0xCC000000)],
-            stops: [0.55, 1.0],
+    final i = widget.currentIndex;
+    final project = widget.project;
+    final rawCaption =
+        i < project.frameCaptions.length ? project.frameCaptions[i] : '';
+    if (rawCaption.isEmpty) return const SizedBox.shrink();
+
+    final uppercase = project.captionUppercaseFor(i);
+    final rotation = project.captionRotationFor(i).toDouble();
+    final position = i < project.frameTextPositions.length
+        ? project.frameTextPositions[i]
+        : 'bottom';
+    final style = project.resolvedCaptionStyleFor(i);
+    final caption = uppercase ? rawCaption.toUpperCase() : rawCaption;
+    final animStyle = project.textAnimStyle;
+    final progress = _entranceCtrl?.value ?? 1.0;
+
+    const double fontPx = 16;
+    // Map the position preset to an Align fraction. Matches the renderer
+    // and caption-wizard preview.
+    final Alignment align = switch (position) {
+      'top' => const Alignment(0, -0.75),
+      'center' => Alignment.center,
+      _ => Alignment(0, widget.branding != null ? 0.65 : 0.80),
+    };
+
+    Widget caped = _styledCaption(text: caption, style: style, fontSize: fontPx);
+    if (rotation != 0) {
+      caped = Transform.rotate(
+        angle: rotation * 3.14159265358979 / 180.0,
+        child: caped,
+      );
+    }
+    caped = _applyEntrance(
+      child: caped,
+      progress: progress,
+      fontSize: fontPx,
+      animStyle: animStyle,
+    );
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Align(alignment: align, child: caped),
+        if (animStyle != 'none')
+          Positioned(
+            bottom: 10,
+            right: 10,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(999),
+                onTap: () {
+                  PrHaptics.tap();
+                  _replayEntrance();
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: AppColors.brandEmber.withValues(alpha: 0.92),
+                    borderRadius: BorderRadius.circular(999),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.3),
+                        blurRadius: 6,
+                      ),
+                    ],
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.play_arrow_rounded,
+                          color: Colors.white, size: 16),
+                      SizedBox(width: 3),
+                      Text('Replay',
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
-        ),
-      ),
-      Positioned(
-        left: 14, right: 14,
-        bottom: widget.branding != null ? 56 : 16,
+      ],
+    );
+  }
+
+  Widget _styledCaption({
+    required String text,
+    required CaptionStyle style,
+    required double fontSize,
+  }) {
+    final double padH = fontSize * 0.75;
+    final double padV = fontSize * 0.35;
+    final double radius = fontSize * 0.7;
+    return IntrinsicWidth(
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: padH, vertical: padV),
+        decoration: style.pillColor != null
+            ? BoxDecoration(
+                color: style.pillColor,
+                borderRadius: BorderRadius.circular(radius),
+              )
+            : null,
         child: Text(
-          caption,
-          style: AppTextStyles.headlineSmall.copyWith(
-            fontSize: 15,
-            shadows: [const Shadow(color: Colors.black, blurRadius: 6)],
-          ),
-          maxLines: 2, overflow: TextOverflow.ellipsis,
+          text,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: googleFontsStyleFor(style, fontSize: fontSize),
         ),
       ),
-    ]);
+    );
+  }
+
+  Widget _applyEntrance({
+    required Widget child,
+    required double progress,
+    required double fontSize,
+    required String animStyle,
+  }) {
+    if (progress >= 1.0) return child;
+    switch (animStyle) {
+      case 'fade':
+        return Opacity(opacity: progress.clamp(0, 1), child: child);
+      case 'slide_up':
+        final dy = (1 - progress) * (fontSize * 4);
+        return Transform.translate(offset: Offset(0, dy), child: child);
+      case 'pop':
+        final s = (0.6 + 0.4 * progress).clamp(0.6, 1.0);
+        return Transform.scale(scale: s, child: child);
+      case 'typewriter':
+      case 'wipe':
+        final dx = (1 - progress) * -300.0;
+        return Transform.translate(offset: Offset(dx, 0), child: child);
+      default:
+        return child;
+    }
   }
 
   Widget _buildBrandingStrip() => Positioned(
@@ -645,12 +882,12 @@ class _PreviewCanvasState extends State<_PreviewCanvas> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(widget.branding.businessName as String,
+                    Text(widget.branding!.businessName,
                         style: AppTextStyles.labelSmall
                             .copyWith(fontSize: 9),
                         maxLines: 1, overflow: TextOverflow.ellipsis),
-                    if ((widget.branding.phoneNumber as String).isNotEmpty)
-                      Text(widget.branding.phoneNumber as String,
+                    if (widget.branding!.phoneNumber.isNotEmpty)
+                      Text(widget.branding!.phoneNumber,
                           style: AppTextStyles.labelSmall.copyWith(
                               fontSize: 8,
                               color: AppColors.textSecondary),
@@ -1148,7 +1385,7 @@ class _MotionStylePicker extends ConsumerWidget {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(_familyIcon(style.family),
+                        Icon(_styleIcon(style.id),
                             color: isSelected
                                 ? AppColors.primary
                                 : AppColors.textSecondary,
@@ -1182,9 +1419,25 @@ class _MotionStylePicker extends ConsumerWidget {
     );
   }
 
-  IconData _familyIcon(MotionStyleFamily f) => switch (f) {
-        MotionStyleFamily.subtle => Icons.auto_awesome_outlined,
-        MotionStyleFamily.energetic => Icons.flash_on_rounded,
-        MotionStyleFamily.informational => Icons.info_outline_rounded,
+  /// Per-style glyph hinting at what the motion actually does — zoom,
+  /// horizontal pan, dissolve, slide-in direction, pulse, wipe, etc.
+  /// Keeps each of the 12 styles visually distinct in the picker strip.
+  IconData _styleIcon(MotionStyleId id) => switch (id) {
+        // Subtle family
+        MotionStyleId.slowZoom => Icons.zoom_in_rounded,
+        MotionStyleId.kenBurnsPan => Icons.swap_horiz_rounded,
+        MotionStyleId.softCrossfade => Icons.blur_on_rounded,
+        MotionStyleId.elegantSlide => Icons.north_rounded,
+        // Energetic family
+        MotionStyleId.quickCutBeatSync => Icons.graphic_eq_rounded,
+        MotionStyleId.boldSlide => Icons.east_rounded,
+        MotionStyleId.flashReveal => Icons.flash_on_rounded,
+        MotionStyleId.gridPop => Icons.adjust_rounded,
+        // Informational family
+        MotionStyleId.splitScreenInfo => Icons.south_rounded,
+        MotionStyleId.bottomThirdHighlight => Icons.subtitles_rounded,
+        MotionStyleId.progressiveReveal =>
+          Icons.keyboard_double_arrow_left_rounded,
+        MotionStyleId.captionStack => Icons.list_alt_rounded,
       };
 }
