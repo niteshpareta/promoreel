@@ -12,6 +12,8 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 import '../data/services/background_removal_service.dart';
 import '../data/models/branding_preset.dart';
+import '../data/models/badge_style.dart';
+import '../data/models/caption_style.dart';
 import '../data/models/export_format.dart';
 import '../data/models/video_project.dart';
 import '../data/services/music_library.dart';
@@ -599,6 +601,8 @@ class MediaEncoder {
       final renderTasks  = <({
         int i, String caption, String price, String mrp,
         String badge, String position, String badgeSize,
+        CaptionStyle captionStyle, BadgeStyle badgeStyle,
+        bool uppercase, int rotation,
         String pngPath, String animStyle
       })>[];
 
@@ -612,11 +616,17 @@ class MediaEncoder {
         if (caption.isEmpty && price.isEmpty && mrp.isEmpty && badge.isEmpty) continue;
         final position  = i < project.frameTextPositions.length ? project.frameTextPositions[i] : 'bottom';
         final badgeSize = i < project.frameBadgeSizes.length    ? project.frameBadgeSizes[i]    : 'medium';
+        final resolvedStyle = project.resolvedCaptionStyleFor(i);
+        final resolvedBadge = project.resolvedOfferBadgeStyleFor(i);
+        final uppercase = project.captionUppercaseFor(i);
+        final rotation = project.captionRotationFor(i);
         final pngPath   = p.join(tmp, 'overlay_frame_${i}_$ts.png');
         renderedTextPngs.add(pngPath);
         renderTasks.add((
           i: i, caption: caption, price: price, mrp: mrp,
           badge: badge, position: position, badgeSize: badgeSize,
+          captionStyle: resolvedStyle, badgeStyle: resolvedBadge,
+          uppercase: uppercase, rotation: rotation,
           pngPath: pngPath, animStyle: animStyle,
         ));
       }
@@ -624,7 +634,10 @@ class MediaEncoder {
       await Future.wait(renderTasks.map((t) => TextRenderer.renderToFile(
         headline: t.caption, priceTag: t.price, mrpTag: t.mrp,
         offerBadge: t.badge, textPosition: t.position,
-        badgeSize: t.badgeSize, outputPath: t.pngPath,
+        badgeSize: t.badgeSize, captionStyle: t.captionStyle,
+        badgeStyle: t.badgeStyle,
+        uppercase: t.uppercase, rotationDegrees: t.rotation,
+        outputPath: t.pngPath,
       )));
 
       for (final t in renderTasks) {
@@ -633,6 +646,7 @@ class MediaEncoder {
           startSec:  frameStarts[t.i],
           endSec:    frameStarts[t.i] + frameDurationsDouble[t.i],
           animStyle: t.animStyle,
+          textPosition: t.position,
         ));
       }
 

@@ -1,7 +1,72 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../core/utils/text_position.dart';
+import '../data/models/badge_style.dart';
+import '../data/models/caption_style.dart';
+import 'badge_painter.dart';
+
+/// Build the `TextStyle` for a caption styled according to [style].
+///
+/// Shared by the renderer (for baked PNG overlays) and the preview widget
+/// (for live editor feedback) so what users see on-screen matches the
+/// exported video exactly. Fonts are resolved via `google_fonts`; the first
+/// call per family reaches out to fetch the font, subsequent calls hit the
+/// on-disk cache.
+TextStyle googleFontsStyleFor(
+  CaptionStyle style, {
+  required double fontSize,
+  double height = 1.2,
+}) {
+  List<Shadow>? shadows;
+  Paint? foreground;
+  Color? fillColor = style.textColor;
+  switch (style.effect) {
+    case CaptionEffect.glow:
+      final glow = style.glowColor ?? const Color(0xFF4DE1FF);
+      shadows = [
+        Shadow(color: glow, blurRadius: fontSize * 0.45),
+        Shadow(color: glow.withValues(alpha: 0.85), blurRadius: fontSize * 0.25),
+        Shadow(color: glow.withValues(alpha: 0.70), blurRadius: fontSize * 0.12),
+      ];
+      break;
+    case CaptionEffect.shadow:
+      shadows = [
+        Shadow(
+          color: const Color(0xB3000000),
+          blurRadius: fontSize * 0.18,
+          offset: Offset(0, fontSize * 0.025),
+        ),
+      ];
+      break;
+    case CaptionEffect.outline:
+      // Crisp stroke around glyphs. When `foreground` is set the `color`
+      // field must be null, so drop the fill here; the stroke draws on top
+      // of nothing — which is exactly the "hollow text" look.
+      foreground = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = (fontSize * 0.04).clamp(1.2, 3.0)
+        ..color = style.textColor;
+      fillColor = null;
+      break;
+    case CaptionEffect.none:
+      shadows = null;
+      break;
+  }
+
+  final base = GoogleFonts.getFont(
+    style.fontFamily,
+    fontSize: fontSize,
+    fontWeight: style.fontWeight,
+    height: height,
+  );
+  return base.copyWith(
+    color: fillColor,
+    foreground: foreground,
+    shadows: shadows,
+  );
+}
 
 /// Renders caption, price tag, and offer badge onto a transparent 720×1280 PNG.
 class TextRenderer {
@@ -29,16 +94,23 @@ class TextRenderer {
     required String textPosition,
     required String outputPath,
     String badgeSize = 'medium',
+    CaptionStyle? captionStyle,
+    BadgeStyle? badgeStyle,
+    bool uppercase = false,
+    int rotationDegrees = 0,
     int width = 720,
     int height = 1280,
   }) async {
     final bytes = await _renderPng(
-      headline: headline,
+      headline: uppercase ? headline.toUpperCase() : headline,
       priceTag: priceTag,
       mrpTag: mrpTag,
       offerBadge: offerBadge,
       textPosition: textPosition,
       badgeSize: badgeSize,
+      captionStyle: captionStyle ?? CaptionStyle.defaultStyle,
+      badgeStyle: badgeStyle ?? BadgeStyle.defaultStyle,
+      rotationDegrees: rotationDegrees,
       width: width,
       height: height,
     );
@@ -53,6 +125,9 @@ class TextRenderer {
     required String offerBadge,
     required String textPosition,
     required String badgeSize,
+    required CaptionStyle captionStyle,
+    required BadgeStyle badgeStyle,
+    required int rotationDegrees,
     required int width,
     required int height,
   }) async {
@@ -72,81 +147,76 @@ class TextRenderer {
 
     final pos = TextPosition.parse(textPosition);
 
-    // Gradient scrim for text legibility — only for legacy presets. Custom
-    // drag positions get no scrim; the text's own drop-shadows handle
-    // legibility without locking a huge dark band to the frame.
-    if (hasText && !pos.isCustom) {
-      final Paint scrimPaint = Paint();
-      if (textPosition == 'top') {
-        scrimPaint.shader = const LinearGradient(
-          begin: Alignment.bottomCenter,
-          end: Alignment.topCenter,
-          colors: [Colors.transparent, Color(0xCC000000)],
-          stops: [0.3, 1.0],
-        ).createShader(Rect.fromLTWH(0, 0, width.toDouble(), height * 0.45));
-        canvas.drawRect(Rect.fromLTWH(0, 0, width.toDouble(), height * 0.45), scrimPaint);
-      } else if (textPosition == 'center') {
-        scrimPaint.color = const Color(0x99000000);
-        canvas.drawRect(
-          Rect.fromLTWH(0, height * 0.35, width.toDouble(), height * 0.30),
-          scrimPaint,
-        );
-      } else {
-        scrimPaint.shader = const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Colors.transparent, Color(0xCC000000)],
-          stops: [0.0, 1.0],
-        ).createShader(Rect.fromLTWH(0, height * 0.55, width.toDouble(), height * 0.45));
-        canvas.drawRect(
-          Rect.fromLTWH(0, height * 0.55, width.toDouble(), height * 0.45),
-          scrimPaint,
-        );
-      }
-    }
-
-    // Caption text
+    // Canva-style caption: optional rounded-rect pill plus the text's drop
+    // shadow / glow. Style preset decides font, colour, pill, and effect.
     if (hasText) {
+      const double fontPx = 48;
+      const double padH = fontPx * 0.75;
+      const double padV = fontPx * 0.35;
+      const double radius = fontPx * 0.7;
+
+      final captionTextStyle = googleFontsStyleFor(
+        captionStyle,
+        fontSize: fontPx,
+      );
+
       final painter = TextPainter(
-        text: TextSpan(
-          text: headline,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 48,
-            fontWeight: FontWeight.w800,
-            height: 1.2,
-            shadows: [
-              Shadow(color: Colors.black, blurRadius: 12, offset: Offset(2, 2)),
-              Shadow(color: Colors.black, blurRadius: 6),
-            ],
-          ),
-        ),
+        text: TextSpan(text: headline, style: captionTextStyle),
         textDirection: TextDirection.ltr,
         textAlign: TextAlign.center,
         maxLines: 2,
-      )..layout(maxWidth: width - 60.0);
+      )..layout(maxWidth: width - 80.0);
 
-      final double x;
-      final double y;
+      final double pillW = painter.width + padH * 2;
+      final double pillH = painter.height + padV * 2;
+
+      final double cx;
+      final double cy;
       if (pos.isCustom) {
-        // Centre the caption block on the fractional offset, clamped so the
-        // text never overflows the frame.
-        x = (width * pos.offset.dx - painter.width / 2)
-            .clamp(24.0, width - painter.width - 24.0);
-        y = (height * pos.offset.dy - painter.height / 2)
-            .clamp(40.0, height - painter.height - 40.0);
+        cx = (width * pos.offset.dx)
+            .clamp(pillW / 2 + 24.0, width - pillW / 2 - 24.0);
+        cy = (height * pos.offset.dy)
+            .clamp(pillH / 2 + 40.0, height - pillH / 2 - 40.0);
       } else if (textPosition == 'top') {
-        // Push caption below badge row when badges exist to avoid overlap
-        x = 30;
-        y = hasBadgeOverlay ? (80 + badgeH + 12) : 100.0;
+        cx = width / 2.0;
+        cy = hasBadgeOverlay
+            ? (80 + badgeH + 12 + pillH / 2)
+            : (100.0 + pillH / 2);
       } else if (textPosition == 'center') {
-        x = 30;
-        y = (height - painter.height) / 2.0;
+        cx = width / 2.0;
+        cy = height / 2.0;
       } else {
-        x = 30;
-        y = height - 148.0 - painter.height;
+        cx = width / 2.0;
+        cy = height - 148.0 - pillH / 2;
       }
-      painter.paint(canvas, Offset(x, y));
+
+      // Rotation — tilt the pill+text around their shared centre.
+      // Wrapped in save/restore so following overlays aren't affected.
+      final bool rotated = rotationDegrees != 0;
+      if (rotated) {
+        canvas.save();
+        canvas.translate(cx, cy);
+        canvas.rotate(rotationDegrees * 3.14159265358979 / 180.0);
+        canvas.translate(-cx, -cy);
+      }
+
+      if (captionStyle.pillColor != null) {
+        final pillRect = Rect.fromCenter(
+          center: Offset(cx, cy),
+          width: pillW,
+          height: pillH,
+        );
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(pillRect, const Radius.circular(radius)),
+          Paint()..color = captionStyle.pillColor!,
+        );
+      }
+      painter.paint(
+        canvas,
+        Offset(cx - painter.width / 2, cy - painter.height / 2),
+      );
+
+      if (rotated) canvas.restore();
     }
 
     // Price badge — top-right
@@ -162,17 +232,15 @@ class TextRenderer {
       );
     }
 
-    // Offer badge — top-left
+    // Offer badge — top-left, painted via the shared badge_painter so the
+    // PNG matches the Flutter preview for all 6 style presets.
     if (hasBadge) {
-      final color = _badgeColors[offerBadge] ?? const Color(0xFFFF6E40);
       _drawBadge(
         canvas: canvas,
         text: offerBadge,
-        bgColor: color,
-        textColor: Colors.white,
+        style: badgeStyle,
         top: 80,
         left: 36,
-        canvasWidth: width.toDouble(),
         sf: sf,
       );
     }
@@ -187,47 +255,21 @@ class TextRenderer {
   static void _drawBadge({
     required Canvas canvas,
     required String text,
-    required Color bgColor,
-    required Color textColor,
+    required BadgeStyle style,
     required double top,
-    required double canvasWidth,
+    required double left,
     required double sf,
-    double? left,
-    double? right,
   }) {
     final fontSize = 30.0 * sf;
-    final padH = 22.0 * sf;
-    final padV = 10.0 * sf;
-    final radius = (14.0 * sf).clamp(6.0, 20.0);
-
-    final painter = TextPainter(
-      text: TextSpan(
-        text: text,
-        style: TextStyle(
-          color: textColor,
-          fontSize: fontSize,
-          fontWeight: FontWeight.w900,
-          letterSpacing: 0.5,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-
-    final badgeW = painter.width + padH * 2;
-    final badgeH = painter.height + padV * 2;
-    final double x = left ?? (canvasWidth - badgeW - right!);
-
-    final rrect = RRect.fromLTRBR(x, top, x + badgeW, top + badgeH,
-        Radius.circular(radius));
-
-    canvas.drawRRect(
-      rrect.shift(const Offset(2, 3)),
-      Paint()
-        ..color = Colors.black.withOpacity(0.35)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+    final size = measureBadge(style, text, fontSize);
+    final rect = Rect.fromLTWH(left, top, size.width, size.height);
+    paintBadgeOn(
+      canvas,
+      rect: rect,
+      style: style,
+      text: text,
+      fontSize: fontSize,
     );
-    canvas.drawRRect(rrect, Paint()..color = bgColor);
-    painter.paint(canvas, Offset(x + padH, top + padV));
   }
 
   static void _drawPriceBadge({

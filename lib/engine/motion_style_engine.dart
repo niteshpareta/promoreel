@@ -7,11 +7,33 @@ class FrameTextOverlay {
     required this.startSec,
     required this.endSec,
     this.animStyle = 'none',
+    this.textPosition = 'bottom',
   });
   final String path;
   final double startSec;
   final double endSec;
-  final String animStyle; // 'none' | 'fade' | 'slide_up'
+  final String animStyle;
+  // 'none' | 'fade' | 'slide_up' | 'typewriter' | 'wipe' | 'pop'
+
+  /// Where the caption sits on the frame — used by the `pop` animation to
+  /// keep the caption anchored at its original position while the pill
+  /// scales up (otherwise the whole PNG re-centres and top/bottom captions
+  /// drift towards the middle).
+  final String textPosition;
+
+  /// Approximate fractional y position (0–1) of the caption centre. Used
+  /// by pop's overlay y expression so the pill scales in place.
+  double get centerYFraction {
+    switch (textPosition) {
+      case 'top':
+        return 0.12;
+      case 'center':
+        return 0.50;
+      case 'bottom':
+      default:
+        return 0.85;
+    }
+  }
 }
 
 /// Per-slide camera/scale motion applied on top of the composited 720×1280 frame.
@@ -53,35 +75,84 @@ class MotionStyleEngine {
     switch (motion) {
       case _Motion.none:
         return '';
-      // NOTE: FFmpeg 8.0 tightened the crop filter's expression evaluator —
-      // expressions referencing `t` (time) now require `eval=frame` to be
-      // re-evaluated per frame. Default `eval=init` rejects `t` because
-      // there is no time-of-frame at init. All time-dependent crops below
-      // therefore end with `:eval=frame`.
+      // NOTE: FFmpeg 8.0's `crop` filter no longer accepts `t` in its
+      // expressions (evaluation fails at filter config with "Error when
+      // evaluating the expression"). The reliable replacement is `scale`
+      // with `eval=frame`, which still supports time-dependent expressions.
+      //
+      // Trick for a "zoom-in" effect: scale the input LARGER over time,
+      // then statically crop the centre back to the output size. Same
+      // perceived motion as crop-in + scale-up, but uses only filters that
+      // FFmpeg 8 accepts.
+      //
+      // For Ken Burns pan: scale statically to a slightly larger size and
+      // zoompan across it, since pan-in-crop is also off-limits. We use
+      // `zoompan` which is purpose-built for this.
       case _Motion.zoomInStandard:
-        return ",crop='iw/(1+0.15*t/$dur)':'ih/(1+0.15*t/$dur)':"
-            "'(iw-ow)/2':'(ih-oh)/2':0:1:eval=frame,scale=$outW:$outH";
+        return _zoomInViaScale(factor: 0.15, dur: dur, outW: outW, outH: outH);
       case _Motion.zoomInSubtle:
-        return ",crop='iw/(1+0.08*t/$dur)':'ih/(1+0.08*t/$dur)':"
-            "'(iw-ow)/2':'(ih-oh)/2':0:1:eval=frame,scale=$outW:$outH";
+        return _zoomInViaScale(factor: 0.08, dur: dur, outW: outW, outH: outH);
       case _Motion.kenBurnsPan:
-        // Alternate pan direction per slide so consecutive slides don't feel identical.
-        if (slideIdx.isEven) {
-          return ",crop='iw/1.15':'ih/1.15':'(iw-ow)*t/$dur':'(ih-oh)/2':"
-              "0:1:eval=frame,scale=$outW:$outH";
-        } else {
-          return ",crop='iw/1.15':'ih/1.15':'(iw-ow)*(1-t/$dur)':'(ih-oh)/2':"
-              "0:1:eval=frame,scale=$outW:$outH";
-        }
+        return _kenBurnsViaZoomPan(
+            dur: dur, outW: outW, outH: outH, leftToRight: slideIdx.isEven);
       case _Motion.quickPulse:
-        return ",crop='iw/(1.05-0.05*min(t,0.3)/0.3)':"
-            "'ih/(1.05-0.05*min(t,0.3)/0.3)':"
-            "'(iw-ow)/2':'(ih-oh)/2':0:1:eval=frame,scale=$outW:$outH";
+        // Pulse: quick zoom from 1.05 to 1.00 over the first 0.3s, then hold.
+        return _pulseViaScale(
+            startZoom: 0.05, rampSec: 0.3, dur: dur, outW: outW, outH: outH);
       case _Motion.popPulse:
-        return ",crop='iw/(1.12-0.12*min(t,0.45)/0.45)':"
-            "'ih/(1.12-0.12*min(t,0.45)/0.45)':"
-            "'(iw-ow)/2':'(ih-oh)/2':0:1:eval=frame,scale=$outW:$outH";
+        return _pulseViaScale(
+            startZoom: 0.12, rampSec: 0.45, dur: dur, outW: outW, outH: outH);
     }
+  }
+
+  /// Scale-then-center-crop zoom (replaces the old `crop` + scale pair that
+  /// broke in FFmpeg 8). Grows the image by [factor] over the full slide
+  /// duration, then crops the centre to out dims.
+  static String _zoomInViaScale({
+    required double factor,
+    required String dur,
+    required int outW,
+    required int outH,
+  }) {
+    return ",scale=w='$outW*(1+$factor*t/$dur)':h='$outH*(1+$factor*t/$dur)':eval=frame"
+        ",crop=$outW:$outH:(iw-$outW)/2:(ih-$outH)/2";
+  }
+
+  /// Pulse: starts zoomed in by [startZoom] and settles back to 1.0 over
+  /// [rampSec] seconds.
+  static String _pulseViaScale({
+    required double startZoom,
+    required double rampSec,
+    required String dur,
+    required int outW,
+    required int outH,
+  }) {
+    // Zoom factor over time: (1+startZoom) - startZoom * min(t, rampSec) / rampSec
+    final zoomExpr = '(1+$startZoom)-$startZoom*min(t,$rampSec)/$rampSec';
+    return ",scale=w='$outW*($zoomExpr)':h='$outH*($zoomExpr)':eval=frame"
+        ",crop=$outW:$outH:(iw-$outW)/2:(ih-$outH)/2";
+  }
+
+  /// Ken Burns horizontal pan via `zoompan` — scale up 15 %, slide the
+  /// window horizontally. zoompan is FFmpeg's idiomatic filter for this
+  /// and handles time natively.
+  static String _kenBurnsViaZoomPan({
+    required String dur,
+    required int outW,
+    required int outH,
+    required bool leftToRight,
+  }) {
+    final durFloat = double.tryParse(dur) ?? 3.0;
+    final frames = (durFloat * 30).round();
+    // Scale larger so there's room to pan. Then zoompan at constant zoom
+    // with x drifting across the extra width.
+    final scaledW = (outW * 1.15).round();
+    final scaledH = (outH * 1.15).round();
+    final xExpr = leftToRight
+        ? '(iw-ow)*on/$frames'
+        : '(iw-ow)*(1-on/$frames)';
+    return ",scale=$scaledW:$scaledH"
+        ",zoompan=z=1:x='$xExpr':y='(ih-oh)/2':d=$frames:s=${outW}x$outH:fps=30";
   }
 
   static String build({
@@ -245,6 +316,36 @@ class MotionStyleEngine {
         buf.write("[$lastLabel][${nextIdx}:v]overlay="
             "x=0:"
             "y='if(lt(t-$start,0.35),((0.35-(t-$start))/0.35)*80,0)':"
+            "enable='between(t,$start,$end)':"
+            "format=auto:eof_action=repeat[$outLabel]; ");
+      } else if (ov.animStyle == 'typewriter' || ov.animStyle == 'wipe') {
+        // FFmpeg 8's `crop` filter rejects the `eval` option entirely, so
+        // we can't do a time-varying left-to-right mask with crop. Instead
+        // we slide the overlay in from the left using overlay-x expression
+        // (which DOES accept `t`). Caption appears to glide in — reads as
+        // an entrance. Typewriter is just the slower version.
+        final revealDur = ov.animStyle == 'typewriter' ? 0.8 : 0.35;
+        buf.write("[$lastLabel][${nextIdx}:v]overlay="
+            "x='if(lt(t-$start,$revealDur),"
+            "-w*(1-(t-$start)/$revealDur),0)':"
+            "y=0:"
+            "enable='between(t,$start,$end)':"
+            "format=auto:eof_action=repeat[$outLabel]; ");
+      } else if (ov.animStyle == 'pop') {
+        // Scale 0.6 → 1.0 over 0.3s. Overlay y is anchored to the caption's
+        // original vertical centre so top/bottom captions don't drift
+        // toward screen middle as the overlay shrinks.
+        const double popDur = 0.30;
+        final startStr = ov.startSec.toStringAsFixed(3);
+        final scaleExpr =
+            "if(lt(t-$startStr,$popDur),"
+            "min(1,0.6+0.4*(t-$startStr)/$popDur),"
+            "1)";
+        final cyFrac = ov.centerYFraction.toStringAsFixed(3);
+        buf.write('[${nextIdx}:v]setpts=PTS+$start/TB,'
+            "scale=w='iw*($scaleExpr)':h='ih*($scaleExpr)':eval=frame[pop$i]; ");
+        buf.write("[$lastLabel][pop$i]overlay="
+            "x='(W-w)/2':y='$cyFrac*(H-h)':"
             "enable='between(t,$start,$end)':"
             "format=auto:eof_action=repeat[$outLabel]; ");
       } else {
