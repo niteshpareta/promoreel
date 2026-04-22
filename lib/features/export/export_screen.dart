@@ -1,7 +1,11 @@
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:video_thumbnail/video_thumbnail.dart';
 import '../../core/router/app_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
@@ -12,6 +16,7 @@ import '../../core/ui/pr_icons.dart';
 import '../../core/ui/reel_mark.dart';
 import '../../core/ui/tokens.dart';
 import '../../core/utils/whatsapp_share.dart';
+import '../../data/models/export_format.dart';
 import '../../data/services/draft_service.dart';
 import '../../engine/media_encoder.dart';
 import '../../features/shared/widgets/platform_share_sheet.dart';
@@ -20,7 +25,7 @@ import '../../providers/drafts_provider.dart';
 import '../../providers/history_provider.dart';
 import '../../providers/project_provider.dart';
 
-enum _ExportState { rendering, done, error }
+enum _ExportState { chooseQuality, rendering, done, error }
 
 /// Export screen — the moment the reel is born.
 ///
@@ -44,11 +49,16 @@ class ExportScreen extends ConsumerStatefulWidget {
 
 class _ExportScreenState extends ConsumerState<ExportScreen>
     with TickerProviderStateMixin {
-  _ExportState _state = _ExportState.rendering;
+  _ExportState _state = _ExportState.chooseQuality;
   double _progress = 0;
   String? _errorMessage;
   String? _doneOutputPath;
   bool _exportStarted = false;
+
+  /// User's pick from the quality chooser. Default to Full HD since the
+  /// trust-chip row now says "HD" (without the 720p qualifier) and the
+  /// user's expectation is 1080p.
+  ExportQuality _quality = ExportQuality.fullHd;
 
   /// Ambient "the engine is working" pulse — used by the aurora & reel mark.
   late final AnimationController _pulseCtrl;
@@ -64,7 +74,8 @@ class _ExportScreenState extends ConsumerState<ExportScreen>
           ..repeat(reverse: true);
     _celebrateCtrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 900));
-    WidgetsBinding.instance.addPostFrameCallback((_) => _startExport());
+    // Export no longer auto-starts — the user picks HD or Full HD on the
+    // chooser screen first, then taps "Export" to kick things off.
   }
 
   Future<void> _startExport() async {
@@ -90,6 +101,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen>
       project: project,
       branding: branding.businessName.isNotEmpty ? branding : null,
       addWatermark: false,
+      quality: _quality,
       onProgress: (p) {
         if (mounted) setState(() => _progress = p);
       },
@@ -145,9 +157,20 @@ class _ExportScreenState extends ConsumerState<ExportScreen>
     }
   }
 
+  /// Jump to the caption wizard or style picker, then re-render ONLY if the
+  /// user actually changed something. Snapshot the project JSON before
+  /// navigating; on return, diff against the current state. If identical,
+  /// stay on the success screen with the existing reel rather than burning
+  /// another render cycle for nothing.
   Future<void> _openEnhancement(String route) async {
+    final beforeSnapshot =
+        jsonEncode(ref.read(projectProvider)?.toJson() ?? {});
     await context.push(route);
-    if (mounted) _reExport();
+    if (!mounted) return;
+    final afterSnapshot =
+        jsonEncode(ref.read(projectProvider)?.toJson() ?? {});
+    if (beforeSnapshot == afterSnapshot) return; // no change → no re-render
+    _reExport();
   }
 
   @override
@@ -174,6 +197,17 @@ class _ExportScreenState extends ConsumerState<ExportScreen>
               outputPath: _doneOutputPath,
               pulseCtrl: _pulseCtrl,
               celebrateCtrl: _celebrateCtrl,
+              quality: _quality,
+              onQualityChanged: (q) {
+                PrHaptics.select();
+                setState(() => _quality = q);
+              },
+              onStartExport: () {
+                PrHaptics.commit();
+                setState(() => _state = _ExportState.rendering);
+                _pulseCtrl.repeat(reverse: true);
+                _startExport();
+              },
               onRetry: _reExport,
               onViewVideo: () => context.push(
                 '${AppRoutes.player}?path=${Uri.encodeComponent(_doneOutputPath!)}',
@@ -219,6 +253,9 @@ class _Phase extends StatelessWidget {
     required this.outputPath,
     required this.pulseCtrl,
     required this.celebrateCtrl,
+    required this.quality,
+    required this.onQualityChanged,
+    required this.onStartExport,
     required this.onRetry,
     required this.onViewVideo,
     required this.onShareWhatsApp,
@@ -234,6 +271,9 @@ class _Phase extends StatelessWidget {
   final String? outputPath;
   final AnimationController pulseCtrl;
   final AnimationController celebrateCtrl;
+  final ExportQuality quality;
+  final ValueChanged<ExportQuality> onQualityChanged;
+  final VoidCallback onStartExport;
   final VoidCallback onRetry;
   final VoidCallback onViewVideo;
   final VoidCallback onShareWhatsApp;
@@ -269,75 +309,63 @@ class _Phase extends StatelessWidget {
             child: Column(
               children: [
                 const Spacer(flex: 2),
-                _ProgressVisual(
-                  state: state,
-                  progress: progress,
-                  pulseCtrl: pulseCtrl,
-                  celebrateCtrl: celebrateCtrl,
-                ),
-                const SizedBox(height: PrSpacing.xl),
-                _StatusText(state: state, progress: progress, error: errorMessage),
-                if (state == _ExportState.rendering)
-                  Padding(
-                    padding: const EdgeInsets.only(top: PrSpacing.md),
-                    child: _FilmstripScrubber(progress: progress),
+                if (state == _ExportState.chooseQuality)
+                  _QualityChooser(
+                    selected: quality,
+                    onChanged: onQualityChanged,
+                  )
+                else ...[
+                  _ProgressVisual(
+                    state: state,
+                    progress: progress,
+                    pulseCtrl: pulseCtrl,
+                    celebrateCtrl: celebrateCtrl,
+                    outputPath: outputPath,
+                    onPlay: onViewVideo,
                   ),
-                const Spacer(flex: 3),
+                  const SizedBox(height: PrSpacing.xl),
+                  _StatusText(state: state, progress: progress, error: errorMessage),
+                  if (state == _ExportState.rendering)
+                    Padding(
+                      padding: const EdgeInsets.only(top: PrSpacing.md),
+                      child: _FilmstripScrubber(progress: progress),
+                    ),
+                ],
+                const Spacer(flex: 2),
+                if (state == _ExportState.chooseQuality) ...[
+                  PrButton(
+                    label: 'Export · ${quality.label}',
+                    icon: PrIcons.download,
+                    onPressed: onStartExport,
+                  ),
+                  const SizedBox(height: PrSpacing.sm),
+                  PrButton(
+                    label: 'Back',
+                    variant: PrButtonVariant.ghost,
+                    onPressed: onNewVideo,
+                    expand: false,
+                  ),
+                ],
                 if (state == _ExportState.done) ...[
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _EnhanceCard(
-                          icon: PrIcons.text,
-                          label: 'Captions',
-                          onTap: onAddCaptions,
-                        ),
-                      ),
-                      const SizedBox(width: PrSpacing.xs),
-                      Expanded(
-                        child: _EnhanceCard(
-                          icon: PrIcons.sparkle,
-                          label: 'Style',
-                          onTap: onChangeStyle,
-                        ),
-                      ),
-                    ],
+                  // Primary share — WhatsApp (India default destination)
+                  _WhatsAppPrimaryCta(onTap: onShareWhatsApp),
+                  const SizedBox(height: PrSpacing.sm),
+                  // Quick-share row — Instagram / Facebook / YouTube / More.
+                  // All route through the system share sheet via onShareOther
+                  // today; wire platform-specific intents in a follow-up.
+                  _QuickShareRow(
+                    onInstagram: onShareOther,
+                    onFacebook: onShareOther,
+                    onYouTube: onShareOther,
+                    onMore: onShareOther,
                   ),
                   const SizedBox(height: PrSpacing.md),
-                  _WhatsAppPrimaryCta(onTap: onShareWhatsApp),
-                  const SizedBox(height: PrSpacing.xs + 2),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: PrButton(
-                          label: 'Play',
-                          icon: PrIcons.play,
-                          variant: PrButtonVariant.secondary,
-                          size: PrButtonSize.sm,
-                          onPressed: onViewVideo,
-                        ),
-                      ),
-                      const SizedBox(width: PrSpacing.xs),
-                      Expanded(
-                        child: PrButton(
-                          label: 'Share',
-                          icon: PrIcons.share,
-                          variant: PrButtonVariant.secondary,
-                          size: PrButtonSize.sm,
-                          onPressed: onShareOther,
-                        ),
-                      ),
-                      const SizedBox(width: PrSpacing.xs),
-                      Expanded(
-                        child: PrButton(
-                          label: 'New',
-                          icon: PrIcons.plus,
-                          variant: PrButtonVariant.secondary,
-                          size: PrButtonSize.sm,
-                          onPressed: onNewVideo,
-                        ),
-                      ),
-                    ],
+                  // Utility row: play, tweak, start fresh.
+                  _UtilityRow(
+                    onPlay: onViewVideo,
+                    onTweak: onAddCaptions,
+                    onTweakStyle: onChangeStyle,
+                    onNew: onNewVideo,
                   ),
                 ],
                 if (state == _ExportState.error) ...[
@@ -374,41 +402,41 @@ class _ProgressVisual extends StatelessWidget {
     required this.progress,
     required this.pulseCtrl,
     required this.celebrateCtrl,
+    this.outputPath,
+    this.onPlay,
   });
   final _ExportState state;
   final double progress;
   final AnimationController pulseCtrl;
   final AnimationController celebrateCtrl;
 
+  /// Path to the finished reel — shown as a 9:16 thumbnail in the done phase.
+  final String? outputPath;
+  final VoidCallback? onPlay;
+
   @override
   Widget build(BuildContext context) {
     switch (state) {
+      case _ExportState.chooseQuality:
+        // Unreached — `_Phase` branches on chooseQuality before building
+        // this widget. Kept so the switch stays exhaustive.
+        return const SizedBox.shrink();
       case _ExportState.done:
         return AnimatedBuilder(
           animation: celebrateCtrl,
           builder: (_, __) {
-            // Scale from 0.6 → 1.04 → 1.0 (elastic overshoot)
+            // Scale-and-settle: 0.92 → 1.02 → 1.0 so the thumbnail lands
+            // with a small bounce rather than popping in flat.
             final t = celebrateCtrl.value;
-            final scale = 0.6 +
+            final scale = 0.92 +
                 (t < 0.7
-                    ? Curves.elasticOut.transform(t / 0.7) * 0.44
-                    : 0.44 - (t - 0.7) / 0.3 * 0.04);
+                    ? Curves.elasticOut.transform(t / 0.7) * 0.10
+                    : 0.10 - (t - 0.7) / 0.3 * 0.02);
             return Transform.scale(
               scale: scale,
-              child: Container(
-                width: 160,
-                height: 160,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.signalLeaf.withValues(alpha: 0.14),
-                  border: Border.all(
-                      color: AppColors.signalLeaf, width: 2),
-                ),
-                child: Icon(
-                  PrIcons.check,
-                  color: AppColors.signalLeaf,
-                  size: 76,
-                ),
+              child: _ReelThumbnailHero(
+                outputPath: outputPath,
+                onTap: onPlay,
               ),
             );
           },
@@ -583,6 +611,10 @@ class _StatusText extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     switch (state) {
+      case _ExportState.chooseQuality:
+        // Unreached — handled by `_QualityChooser` in `_Phase` before this
+        // widget is built.
+        return const SizedBox.shrink();
       case _ExportState.rendering:
         return Column(
           children: [
@@ -604,36 +636,22 @@ class _StatusText extends StatelessWidget {
       case _ExportState.done:
         return Column(
           children: [
-            Text('SCENE.  TAKE.  PRINT.',
-                style: AppTextStyles.kicker.copyWith(letterSpacing: 3.2)),
-            const SizedBox(height: PrSpacing.xxs + 2),
-            RichText(
+            Text(
+              'Your reel is ready.',
+              style: AppTextStyles.displaySmall.copyWith(fontSize: 24),
               textAlign: TextAlign.center,
-              text: TextSpan(
-                style: AppTextStyles.displaySmall,
-                children: [
-                  const TextSpan(text: 'Ready for its '),
-                  TextSpan(
-                    text: 'audience.',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ],
-              ),
             ),
-            const SizedBox(height: PrSpacing.xs),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(PrIcons.check,
-                    color: AppColors.signalLeaf, size: 16),
-                const SizedBox(width: 4),
-                Text('Saved to Movies/PromoReel',
-                    style: AppTextStyles.bodySmall.copyWith(
-                      color: AppColors.signalLeaf,
-                    )),
+            const SizedBox(height: PrSpacing.xs + 2),
+            // Trust-chip row — reassures at the share moment: no watermark,
+            // it's in the gallery, HD quality. Three quick tokens beats a
+            // single "Saved to Movies/PromoReel" path that nobody reads.
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: PrSpacing.xs,
+              runSpacing: PrSpacing.xxs + 2,
+              children: const [
+                _DoneChip(icon: Icons.check_circle_rounded, label: 'In your gallery'),
+                _DoneChip(icon: Icons.verified_rounded, label: 'No watermark'),
               ],
             ),
           ],
@@ -670,49 +688,383 @@ class _StatusText extends StatelessWidget {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// Enhance card — tap to jump back into editor for tweaks
+// Reel thumbnail hero — shows the finished video's first frame with a play
+// overlay. This is the biggest UX upgrade of the success screen: instead of
+// an abstract green tick, the user sees the thing they just made.
 // ════════════════════════════════════════════════════════════════════════════
 
-class _EnhanceCard extends StatelessWidget {
-  const _EnhanceCard(
-      {required this.icon, required this.label, required this.onTap});
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
+class _ReelThumbnailHero extends StatefulWidget {
+  const _ReelThumbnailHero({this.outputPath, this.onTap});
+  final String? outputPath;
+  final VoidCallback? onTap;
+
+  @override
+  State<_ReelThumbnailHero> createState() => _ReelThumbnailHeroState();
+}
+
+class _ReelThumbnailHeroState extends State<_ReelThumbnailHero> {
+  Uint8List? _thumbBytes;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ReelThumbnailHero oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.outputPath != widget.outputPath) {
+      _thumbBytes = null;
+      _load();
+    }
+  }
+
+  Future<void> _load() async {
+    final path = widget.outputPath;
+    if (path == null || !File(path).existsSync()) return;
+    try {
+      final data = await VideoThumbnail.thumbnailData(
+        video: path,
+        imageFormat: ImageFormat.JPEG,
+        maxHeight: 720,
+        quality: 85,
+      );
+      if (mounted && data != null) setState(() => _thumbBytes = data);
+    } catch (_) {/* fall back to ember glow below */}
+  }
 
   @override
   Widget build(BuildContext context) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(PrRadius.md),
+        borderRadius: BorderRadius.circular(PrRadius.xl),
         onTap: () {
           PrHaptics.tap();
-          onTap();
+          widget.onTap?.call();
         },
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: PrSpacing.sm + 2),
+          width: 148,
+          height: 264, // 9:16
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainer,
-            borderRadius: BorderRadius.circular(PrRadius.md),
-            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant, width: 0.7),
-          ),
-          child: Column(
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: AppColors.brandEmber.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, color: AppColors.brandEmber, size: 18),
+            color: Colors.black,
+            borderRadius: BorderRadius.circular(PrRadius.xl),
+            border: Border.all(
+              color: AppColors.brandEmber.withValues(alpha: 0.55),
+              width: 1.2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.brandEmber.withValues(alpha: 0.28),
+                blurRadius: 40,
+                spreadRadius: -4,
+                offset: const Offset(0, 12),
               ),
-              const SizedBox(height: PrSpacing.xs),
-              Text(label, style: AppTextStyles.titleSmall),
-              Text('Tap to edit',
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(PrRadius.xl - 1),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (_thumbBytes != null)
+                  Image.memory(_thumbBytes!, fit: BoxFit.cover)
+                else
+                  Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF241709), Color(0xFF0A0807)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                    ),
+                  ),
+                // Subtle vignette — keeps the play button readable
+                // regardless of thumbnail content
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      colors: [
+                        Colors.transparent,
+                        Colors.black.withValues(alpha: 0.45),
+                      ],
+                      stops: const [0.5, 1],
+                    ),
+                  ),
+                ),
+                Center(
+                  child: Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white.withValues(alpha: 0.22),
+                      border:
+                          Border.all(color: Colors.white, width: 1.4),
+                    ),
+                    child: const Icon(PrIcons.play,
+                        color: Colors.white, size: 26),
+                  ),
+                ),
+                // Success tick in the corner — matches the moment without
+                // being the focal point.
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Container(
+                    width: 22,
+                    height: 22,
+                    decoration: BoxDecoration(
+                      color: AppColors.signalLeaf,
+                      shape: BoxShape.circle,
+                      border:
+                          Border.all(color: Colors.black, width: 1.2),
+                    ),
+                    child: const Icon(Icons.check_rounded,
+                        color: Colors.black, size: 14),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// "Done" trust chip — small icon + label pill. Three of these reassure at the
+// share moment: the reel is saved, it's HD, it has no watermark.
+// ════════════════════════════════════════════════════════════════════════════
+
+class _DoneChip extends StatelessWidget {
+  const _DoneChip({required this.icon, required this.label});
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(PrRadius.pill),
+        border: BorderDirectional(
+          top: BorderSide(color: scheme.outlineVariant, width: 0.7),
+          start: BorderSide(color: scheme.outlineVariant, width: 0.7),
+          end: BorderSide(color: scheme.outlineVariant, width: 0.7),
+          bottom: BorderSide(color: scheme.outlineVariant, width: 0.7),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: AppColors.signalLeaf, size: 13),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: AppTextStyles.labelSmall.copyWith(
+              color: scheme.onSurface,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Quick-share row — Instagram / Facebook / YouTube / More. Equal-weight
+// peer destinations to WhatsApp (which is the big primary CTA above). Each
+// tile is a solid-coloured circle in the platform's brand hue.
+// ════════════════════════════════════════════════════════════════════════════
+
+class _QuickShareRow extends StatelessWidget {
+  const _QuickShareRow({
+    required this.onInstagram,
+    required this.onFacebook,
+    required this.onYouTube,
+    required this.onMore,
+  });
+  final VoidCallback onInstagram;
+  final VoidCallback onFacebook;
+  final VoidCallback onYouTube;
+  final VoidCallback onMore;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        _ShareCircle(
+          color: const Color(0xFFE1306C),
+          icon: Icons.camera_alt_rounded,
+          label: 'Reels',
+          onTap: onInstagram,
+        ),
+        _ShareCircle(
+          color: const Color(0xFF1877F2),
+          icon: Icons.facebook_rounded,
+          label: 'Facebook',
+          onTap: onFacebook,
+        ),
+        _ShareCircle(
+          color: const Color(0xFFFF0000),
+          icon: Icons.play_arrow_rounded,
+          label: 'Shorts',
+          onTap: onYouTube,
+        ),
+        _ShareCircle(
+          color: Theme.of(context).colorScheme.surfaceContainerHigh,
+          iconColor: Theme.of(context).colorScheme.onSurface,
+          icon: PrIcons.more,
+          label: 'More',
+          onTap: onMore,
+        ),
+      ],
+    );
+  }
+}
+
+class _ShareCircle extends StatelessWidget {
+  const _ShareCircle({
+    required this.color,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.iconColor,
+  });
+  final Color color;
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color? iconColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        PrHaptics.tap();
+        onTap();
+      },
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: color,
+              boxShadow: [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.3),
+                  blurRadius: 12,
+                  spreadRadius: -2,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Icon(icon, color: iconColor ?? Colors.white, size: 22),
+          ),
+          const SizedBox(height: 6),
+          Text(label,
+              style: AppTextStyles.labelSmall.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w600,
+              )),
+        ],
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Utility row — Play fullscreen / Tweak captions / Make another. Text
+// buttons so they don't compete with the share CTAs above.
+// ════════════════════════════════════════════════════════════════════════════
+
+class _UtilityRow extends StatelessWidget {
+  const _UtilityRow({
+    required this.onPlay,
+    required this.onTweak,
+    required this.onTweakStyle,
+    required this.onNew,
+  });
+  final VoidCallback onPlay;
+  final VoidCallback onTweak;
+  final VoidCallback onTweakStyle;
+  final VoidCallback onNew;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        _UtilityButton(
+          icon: PrIcons.play,
+          label: 'Play',
+          onPressed: onPlay,
+        ),
+        _UtilityButton(
+          icon: PrIcons.edit,
+          label: 'Tweak',
+          onPressed: () {
+            // Open captions by default — most common tweak at success moment.
+            onTweak();
+          },
+        ),
+        _UtilityButton(
+          icon: PrIcons.plus,
+          label: 'Another',
+          onPressed: onNew,
+        ),
+      ],
+    );
+  }
+}
+
+class _UtilityButton extends StatelessWidget {
+  const _UtilityButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(PrRadius.sm),
+        onTap: () {
+          PrHaptics.tap();
+          onPressed();
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+              horizontal: PrSpacing.md, vertical: PrSpacing.xs),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: scheme.onSurfaceVariant, size: 18),
+              const SizedBox(height: 3),
+              Text(label,
                   style: AppTextStyles.labelSmall.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 9.5)),
+                    color: scheme.onSurface,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  )),
             ],
           ),
         ),
@@ -841,4 +1193,168 @@ class _ConfettiPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _ConfettiPainter old) => old.t != t;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Quality chooser — two tiles with honest tradeoffs. Shown before the
+// render kicks off so the user picks HD or Full HD with full context.
+// ════════════════════════════════════════════════════════════════════════════
+
+class _QualityChooser extends StatelessWidget {
+  const _QualityChooser({required this.selected, required this.onChanged});
+
+  final ExportQuality selected;
+  final ValueChanged<ExportQuality> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text('YOUR CUT', style: AppTextStyles.kicker),
+        const SizedBox(height: PrSpacing.xxs + 2),
+        Text('Pick your quality',
+            style: AppTextStyles.displaySmall, textAlign: TextAlign.center),
+        const SizedBox(height: PrSpacing.xs),
+        Text(
+          'You can always come back and re-export.',
+          style: AppTextStyles.bodyMedium.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: PrSpacing.lg),
+        _QualityTile(
+          quality: ExportQuality.fullHd,
+          selected: selected == ExportQuality.fullHd,
+          onTap: () => onChanged(ExportQuality.fullHd),
+        ),
+        const SizedBox(height: PrSpacing.sm),
+        _QualityTile(
+          quality: ExportQuality.hd,
+          selected: selected == ExportQuality.hd,
+          onTap: () => onChanged(ExportQuality.hd),
+        ),
+      ],
+    );
+  }
+}
+
+class _QualityTile extends StatelessWidget {
+  const _QualityTile({
+    required this.quality,
+    required this.selected,
+    required this.onTap,
+  });
+  final ExportQuality quality;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isFullHd = quality == ExportQuality.fullHd;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(PrRadius.md),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+              horizontal: PrSpacing.md, vertical: PrSpacing.sm + 2),
+          decoration: BoxDecoration(
+            color: selected
+                ? AppColors.brandEmber.withValues(alpha: 0.14)
+                : scheme.surfaceContainer,
+            borderRadius: BorderRadius.circular(PrRadius.md),
+            border: Border.all(
+              color: selected
+                  ? AppColors.brandEmber
+                  : scheme.outlineVariant,
+              width: selected ? 1.6 : 0.8,
+            ),
+          ),
+          child: Row(
+            children: [
+              // Left-side resolution badge. Uses `hd_rounded` for both and
+              // differentiates via the text below it.
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: selected
+                      ? AppColors.brandEmber.withValues(alpha: 0.22)
+                      : scheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(PrRadius.sm),
+                ),
+                alignment: Alignment.center,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(isFullHd ? Icons.hd_rounded : Icons.sd_rounded,
+                        color: selected
+                            ? AppColors.brandEmber
+                            : scheme.onSurfaceVariant,
+                        size: 22),
+                    Text(quality.resolutionLabel,
+                        style: AppTextStyles.labelSmall.copyWith(
+                          color: selected
+                              ? AppColors.brandEmber
+                              : scheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 9,
+                          letterSpacing: 0.3,
+                        )),
+                  ],
+                ),
+              ),
+              const SizedBox(width: PrSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Text(quality.label,
+                            style:
+                                AppTextStyles.titleMedium.copyWith(
+                              fontWeight: FontWeight.w800,
+                            )),
+                        const SizedBox(width: PrSpacing.xs),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: scheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(quality.sizeHint,
+                              style: AppTextStyles.labelSmall.copyWith(
+                                color: scheme.onSurfaceVariant,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                              )),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(quality.tagline,
+                        style: AppTextStyles.bodySmall.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+              if (selected)
+                Icon(Icons.check_circle_rounded,
+                    color: AppColors.brandEmber, size: 22),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

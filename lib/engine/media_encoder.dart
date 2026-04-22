@@ -466,6 +466,7 @@ class MediaEncoder {
     required BrandingPreset? branding,
     void Function(double progress)? onProgress,
     bool addWatermark = false,
+    ExportQuality quality = ExportQuality.fullHd,
   }) async {
     final tmp = await _tempDir();
     final out = await _outputDir();
@@ -485,8 +486,8 @@ class MediaEncoder {
     try {
       final n = project.assetPaths.length;
       final fmt  = project.exportFormat;
-      final outW = fmt.outWidth.toInt();
-      final outH = fmt.outHeight.toInt();
+      final outW = fmt.outWidthFor(quality).toInt();
+      final outH = fmt.outHeightFor(quality).toInt();
 
       // 1. Use frame durations exactly as set by the user — no scaling
       final rawDurations = List<int>.generate(n, (i) =>

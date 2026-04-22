@@ -870,7 +870,6 @@ class _SlideAsk extends StatelessWidget {
             runSpacing: PrSpacing.xs,
             children: const [
               _TrustChip(icon: Icons.offline_bolt_rounded, label: 'Offline'),
-              _TrustChip(icon: Icons.hd_rounded, label: '720p HD'),
               _TrustChip(
                   icon: Icons.cloud_off_rounded, label: 'No upload'),
               _TrustChip(

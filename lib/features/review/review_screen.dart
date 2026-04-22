@@ -350,8 +350,6 @@ class _TrustBadges extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Expanded(child: _TrustTile(icon: Icons.hd_rounded, label: '720p HD')),
-        const SizedBox(width: PrSpacing.xs),
         Expanded(
             child: _TrustTile(
                 icon: Icons.data_usage_rounded, label: '~8 MB')),
