@@ -14,31 +14,15 @@ import '../../core/ui/pr_icons.dart';
 import '../../core/ui/pr_section_header.dart';
 import '../../core/ui/tokens.dart';
 import '../../core/utils/text_position.dart';
+import '../../data/models/badge_style.dart';
+import '../../data/models/caption_style.dart';
 import '../../data/models/video_project.dart';
+import '../../engine/badge_painter.dart';
+import '../../engine/text_renderer.dart' show googleFontsStyleFor;
 import '../../data/services/background_removal_service.dart';
 import '../../features/shared/widgets/no_project_fallback.dart';
 import '../../providers/project_provider.dart';
 import 'text_editor_sheet.dart';
-
-// ── Templates ─────────────────────────────────────────────────────────────────
-
-class _Template {
-  const _Template(this.icon, this.label, this.badge, this.duration, this.color);
-  final IconData icon;
-  final String label;
-  final String badge;
-  final int duration;
-  final Color color;
-}
-
-const _templates = [
-  _Template(Icons.bolt_rounded,           'Flash Sale',  '50% OFF',    2, AppColors.signalCrimson),
-  _Template(Icons.auto_awesome_rounded,   'New Arrival', 'NEW',        3, AppColors.signalLeaf),
-  _Template(Icons.currency_rupee_rounded, 'Price Drop',  'SALE',       2, AppColors.brandEmber),
-  _Template(Icons.campaign_rounded,       'Today Only',  'TODAY ONLY', 3, AppColors.signalSky),
-  _Template(Icons.local_fire_department_rounded, 'Hot Deal', 'HOT',    2, Color(0xFFFF6E40)),
-  _Template(Icons.celebration_rounded,   'Festival',    'LIMITED',     3, AppColors.proAurum),
-];
 
 // ── Badge options ─────────────────────────────────────────────────────────────
 
@@ -70,7 +54,6 @@ class _CaptionWizardScreenState extends ConsumerState<CaptionWizardScreen> {
   List<FocusNode> _captionFocusNodes = [];
   List<FocusNode> _priceFocusNodes = [];
   List<FocusNode> _mrpFocusNodes = [];
-  String? _activeTemplate;
 
   @override
   void initState() {
@@ -169,14 +152,6 @@ class _CaptionWizardScreenState extends ConsumerState<CaptionWizardScreen> {
     setState(() {});
   }
 
-  void _applyTemplate(_Template t) {
-    setState(() => _activeTemplate = t.label);
-    ref.read(projectProvider.notifier).applyTemplate(
-      badge: t.badge,
-      duration: t.duration,
-    );
-  }
-
   void _onReorder(int oldIndex, int newIndex) {
     if (oldIndex < newIndex) newIndex--;
     ref.read(projectProvider.notifier).reorderFrames(oldIndex, newIndex);
@@ -217,12 +192,22 @@ class _CaptionWizardScreenState extends ConsumerState<CaptionWizardScreen> {
       PrTextEditorKind.mrp => _mrpCtrls[index],
     };
 
+    final project = ref.read(projectProvider);
     final result = await showPrTextEditor(
       context,
       kind: kind,
       initialText: controller.text,
       frameIndex: index,
       totalFrames: _captionCtrls.length,
+      initialCaptionStyleId: project?.captionStyleIdFor(index)
+          ?? CaptionStyle.defaultStyleId,
+      onCaptionStyleChanged: (styleId) {
+        // Style edits commit immediately — independent of Apply/Cancel on
+        // the text. Matches Canva's "style sticks as you browse presets"
+        // behaviour.
+        ref.read(projectProvider.notifier).setFrameCaptionStyle(index, styleId);
+        setState(() {});
+      },
     );
     if (result == null || !mounted) return;
 
@@ -265,66 +250,38 @@ class _CaptionWizardScreenState extends ConsumerState<CaptionWizardScreen> {
     required String offerBadge,
     required String textPosition,
     required String badgeSize,
+    String captionStyleId = CaptionStyle.defaultStyleId,
+    CaptionStyle? captionStyleResolved,
+    BadgeStyle? badgeStyleResolved,
+    String badgeAnimStyle = 'none',
+    bool captionUppercase = false,
+    int captionRotation = 0,
     bool bgRemoval = false,
     int bgColorArgb = 0,
   }) {
+    final animStyle = ref.read(projectProvider)?.textAnimStyle ?? 'none';
     final isVideo = _isVideoPath(path);
     showDialog(
       context: context,
       barrierColor: Colors.black87,
-      builder: (dialogCtx) => Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 60),
-        child: Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.center,
-          children: [
-            AspectRatio(
-              aspectRatio: 9 / 16,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: isVideo
-                    ? _FullscreenVideoPreview(
-                        path: path,
-                        caption: caption,
-                        priceTag: priceTag,
-                        mrpTag: mrpTag,
-                        offerBadge: offerBadge,
-                        textPosition: textPosition,
-                        badgeSize: badgeSize,
-                      )
-                    : _LiveThumbnail(
-                        path: path,
-                        caption: caption,
-                        priceTag: priceTag,
-                        mrpTag: mrpTag,
-                        offerBadge: offerBadge,
-                        badgeSize: badgeSize,
-                        textPosition: textPosition,
-                        fullSize: true,
-                        bgRemoval: bgRemoval,
-                        bgColorArgb: bgColorArgb,
-                      ),
-              ),
-            ),
-            Positioned(
-              top: -14, right: -14,
-              child: GestureDetector(
-                onTap: () => Navigator.pop(dialogCtx),
-                child: Container(
-                  width: 34, height: 34,
-                  decoration: BoxDecoration(
-                    color: AppColors.bgElevated,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.divider),
-                  ),
-                  child: const Icon(Icons.close_rounded,
-                      color: Colors.white, size: 18),
-                ),
-              ),
-            ),
-          ],
-        ),
+      builder: (dialogCtx) => _FullPreviewDialog(
+        path: path,
+        caption: caption,
+        priceTag: priceTag,
+        mrpTag: mrpTag,
+        offerBadge: offerBadge,
+        textPosition: textPosition,
+        badgeSize: badgeSize,
+        captionStyle: captionStyleResolved ?? CaptionStyle.byId(captionStyleId),
+        captionStyleId: captionStyleId,
+        captionUppercase: captionUppercase,
+        captionRotation: captionRotation,
+        animStyle: animStyle,
+        badgeStyle: badgeStyleResolved ?? BadgeStyle.defaultStyle,
+        badgeAnimStyle: badgeAnimStyle,
+        bgRemoval: bgRemoval,
+        bgColorArgb: bgColorArgb,
+        isVideo: isVideo,
       ),
     );
   }
@@ -388,94 +345,11 @@ class _CaptionWizardScreenState extends ConsumerState<CaptionWizardScreen> {
               ),
             ),
 
-            // ── Quick template strip ────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                  0, PrSpacing.md, 0, PrSpacing.xxs),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(
-                        left: PrSpacing.lg, bottom: PrSpacing.xs),
-                    child: Text('QUICK SETUP',
-                        style: AppTextStyles.kicker),
-                  ),
-                  SizedBox(
-                    height: 80,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: PrSpacing.md),
-                      itemCount: _templates.length,
-                      separatorBuilder: (_, __) =>
-                          const SizedBox(width: PrSpacing.xs + 2),
-                      itemBuilder: (_, i) {
-                        final t = _templates[i];
-                        final active = _activeTemplate == t.label;
-                        return GestureDetector(
-                          onTap: () {
-                            PrHaptics.select();
-                            _applyTemplate(t);
-                          },
-                          child: AnimatedContainer(
-                            duration: PrDuration.fast,
-                            curve: PrCurves.enter,
-                            width: 100,
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: PrSpacing.sm, vertical: PrSpacing.xs + 2),
-                            decoration: BoxDecoration(
-                              color: active
-                                  ? t.color.withValues(alpha: 0.14)
-                                  : Theme.of(context).colorScheme.surfaceContainer,
-                              borderRadius: BorderRadius.circular(PrRadius.md),
-                              border: Border.all(
-                                color: active ? t.color : Theme.of(context).colorScheme.outlineVariant,
-                                width: active ? 1.3 : 0.7,
-                              ),
-                            ),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(t.icon,
-                                    size: 22,
-                                    color: active ? t.color : Theme.of(context).colorScheme.onSurfaceVariant),
-                                const SizedBox(height: PrSpacing.xxs + 2),
-                                Text(
-                                  t.label,
-                                  textAlign: TextAlign.center,
-                                  style: AppTextStyles.labelSmall.copyWith(
-                                    color: active ? t.color : Theme.of(context).colorScheme.onSurface,
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 11,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                Text(
-                                  '${t.duration}s',
-                                  style: AppTextStyles.labelSmall.copyWith(
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                    fontSize: 10,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // ── Text animation style ────────────────────────────────────
-            _TextAnimStylePicker(
-              selected: project.textAnimStyle,
-              onSelected: (s) =>
-                  ref.read(projectProvider.notifier).setTextAnimStyle(s),
-            ),
+            // Text-entrance anim is now picked per-frame via the Motion
+            // button in each frame's caption toolbar — the legacy
+            // `_TextAnimStylePicker` here only exposed 3 options (none /
+            // fade / slide_up) and silently overrode the richer choices
+            // (typewriter / wipe / pop) picked from the Motion sheet.
 
             // ── Frames list ─────────────────────────────────────────────
             Expanded(
@@ -505,6 +379,14 @@ class _CaptionWizardScreenState extends ConsumerState<CaptionWizardScreen> {
                         ? project2.frameDurations[i] : 3,
                     textPosition: i < project2.frameTextPositions.length
                         ? project2.frameTextPositions[i] : 'bottom',
+                    captionStyleId: project2.captionStyleIdFor(i),
+                    captionStyleResolved: project2.resolvedCaptionStyleFor(i),
+                    captionUppercase: project2.captionUppercaseFor(i),
+                    captionRotation: project2.captionRotationFor(i),
+                    captionAnimStyle: project2.textAnimStyle,
+                    badgeStyleId: project2.offerBadgeStyleIdFor(i),
+                    badgeStyleResolved: project2.resolvedOfferBadgeStyleFor(i),
+                    badgeAnimStyle: project2.offerBadgeAnimFor(i),
                     bgRemoval: project2.bgRemovalFor(i),
                     onBgRemovalToggle: () {
                       final enabled = project2.bgRemovalFor(i);
@@ -548,6 +430,108 @@ class _CaptionWizardScreenState extends ConsumerState<CaptionWizardScreen> {
                       ref.read(projectProvider.notifier).setFrameTextPosition(i, p);
                       setState(() {});
                     },
+                    onCaptionStyleSelected: (styleId) {
+                      ref
+                          .read(projectProvider.notifier)
+                          .setFrameCaptionStyle(i, styleId);
+                      setState(() {});
+                    },
+                    onCaptionFontSelected: (family) {
+                      ref
+                          .read(projectProvider.notifier)
+                          .setFrameCaptionFont(i, family);
+                      setState(() {});
+                    },
+                    onCaptionTextColorSelected: (argb) {
+                      ref
+                          .read(projectProvider.notifier)
+                          .setFrameCaptionTextColor(i, argb);
+                      setState(() {});
+                    },
+                    onCaptionPillColorSelected: (argb) {
+                      ref
+                          .read(projectProvider.notifier)
+                          .setFrameCaptionPillColor(i, argb);
+                      setState(() {});
+                    },
+                    onCaptionEffectSelected: (effect) {
+                      ref
+                          .read(projectProvider.notifier)
+                          .setFrameCaptionEffect(i, effect);
+                      setState(() {});
+                    },
+                    onCaptionUppercaseToggled: (value) {
+                      ref
+                          .read(projectProvider.notifier)
+                          .setFrameCaptionUppercase(i, value);
+                      setState(() {});
+                    },
+                    onCaptionMotionSelected: (style) {
+                      ref
+                          .read(projectProvider.notifier)
+                          .setTextAnimStyle(style);
+                      setState(() {});
+                    },
+                    onCaptionRotationChanged: (deg) {
+                      ref
+                          .read(projectProvider.notifier)
+                          .setFrameCaptionRotation(i, deg);
+                      setState(() {});
+                    },
+                    onBadgeStyleSelected: (styleId) {
+                      ref
+                          .read(projectProvider.notifier)
+                          .setFrameOfferBadgeStyle(i, styleId);
+                      setState(() {});
+                    },
+                    onBadgeFillColorSelected: (argb) {
+                      ref
+                          .read(projectProvider.notifier)
+                          .setFrameOfferBadgeFillColor(i, argb);
+                      setState(() {});
+                    },
+                    onBadgeTextColorSelected: (argb) {
+                      ref
+                          .read(projectProvider.notifier)
+                          .setFrameOfferBadgeTextColor(i, argb);
+                      setState(() {});
+                    },
+                    onBadgeAnimSelected: (anim) {
+                      ref
+                          .read(projectProvider.notifier)
+                          .setFrameOfferBadgeAnim(i, anim);
+                      setState(() {});
+                    },
+                    onApplyBadgeToAll: total > 1
+                        ? () {
+                            PrHaptics.commit();
+                            ref
+                                .read(projectProvider.notifier)
+                                .applyBadgeToAll(i);
+                            setState(() {});
+                            ScaffoldMessenger.of(context)
+                              ..hideCurrentSnackBar()
+                              ..showSnackBar(
+                                SnackBar(
+                                  behavior: SnackBarBehavior.floating,
+                                  duration: const Duration(seconds: 2),
+                                  backgroundColor:
+                                      AppColors.brandEmber.withValues(alpha: 0.95),
+                                  content: const Row(
+                                    children: [
+                                      Icon(Icons.check_circle_rounded,
+                                          color: Colors.white, size: 18),
+                                      SizedBox(width: 8),
+                                      Text('Badge applied to all frames',
+                                          style: TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w800)),
+                                    ],
+                                  ),
+                                ),
+                              );
+                          }
+                        : null,
                     onMoveUp: i > 0 ? () => _onReorder(i, i - 1) : null,
                     onMoveDown: i < total - 1 ? () => _onReorder(i, i + 1) : null,
                     onRemove: total > 1 ? () => _removeFrame(i) : null,
@@ -563,6 +547,12 @@ class _CaptionWizardScreenState extends ConsumerState<CaptionWizardScreen> {
                           ? project2.frameTextPositions[i] : 'bottom',
                       badgeSize: project2.frameBadgeSizes.length > i
                           ? project2.frameBadgeSizes[i] : 'medium',
+                      captionStyleId: project2.captionStyleIdFor(i),
+                      captionStyleResolved: project2.resolvedCaptionStyleFor(i),
+                      captionUppercase: project2.captionUppercaseFor(i),
+                      captionRotation: project2.captionRotationFor(i),
+                      badgeStyleResolved: project2.resolvedOfferBadgeStyleFor(i),
+                      badgeAnimStyle: project2.offerBadgeAnimFor(i),
                       bgRemoval: project2.bgRemovalFor(i),
                       bgColorArgb: project2.bgColorFor(i),
                     ),
@@ -684,7 +674,7 @@ class _TextAnimStylePicker extends StatelessWidget {
 
 // ── Frame card ────────────────────────────────────────────────────────────────
 
-class _FrameCard extends StatelessWidget {
+class _FrameCard extends StatefulWidget {
   const _FrameCard({
     required super.key,
     required this.index,
@@ -701,6 +691,14 @@ class _FrameCard extends StatelessWidget {
     required this.badgeSize,
     required this.duration,
     required this.textPosition,
+    required this.captionStyleId,
+    required this.captionStyleResolved,
+    required this.captionUppercase,
+    required this.captionRotation,
+    required this.captionAnimStyle,
+    required this.badgeStyleId,
+    required this.badgeStyleResolved,
+    required this.badgeAnimStyle,
     required this.bgRemoval,
     required this.onBgRemovalToggle,
     required this.bgColor,
@@ -712,6 +710,19 @@ class _FrameCard extends StatelessWidget {
     required this.onBadgeSizeSelected,
     required this.onDurationSelected,
     required this.onPositionSelected,
+    required this.onCaptionStyleSelected,
+    required this.onCaptionFontSelected,
+    required this.onCaptionTextColorSelected,
+    required this.onCaptionPillColorSelected,
+    required this.onCaptionEffectSelected,
+    required this.onCaptionUppercaseToggled,
+    required this.onCaptionMotionSelected,
+    required this.onCaptionRotationChanged,
+    required this.onBadgeStyleSelected,
+    required this.onBadgeFillColorSelected,
+    required this.onBadgeTextColorSelected,
+    required this.onBadgeAnimSelected,
+    required this.onApplyBadgeToAll,
     this.onMoveUp,
     this.onMoveDown,
     this.onRemove,
@@ -736,6 +747,14 @@ class _FrameCard extends StatelessWidget {
   final String badgeSize;
   final int duration;
   final String textPosition;
+  final String captionStyleId;
+  final CaptionStyle captionStyleResolved;
+  final bool captionUppercase;
+  final int captionRotation;
+  final String captionAnimStyle;
+  final String badgeStyleId;
+  final BadgeStyle badgeStyleResolved;
+  final String badgeAnimStyle;
   final bool bgRemoval;
   final VoidCallback onBgRemovalToggle;
 
@@ -750,6 +769,19 @@ class _FrameCard extends StatelessWidget {
   final ValueChanged<String> onBadgeSizeSelected;
   final ValueChanged<int> onDurationSelected;
   final ValueChanged<String> onPositionSelected;
+  final ValueChanged<String> onCaptionStyleSelected;
+  final ValueChanged<String> onCaptionFontSelected;
+  final ValueChanged<int> onCaptionTextColorSelected;
+  final ValueChanged<int> onCaptionPillColorSelected;
+  final ValueChanged<String> onCaptionEffectSelected;
+  final ValueChanged<bool> onCaptionUppercaseToggled;
+  final ValueChanged<String> onCaptionMotionSelected;
+  final ValueChanged<int> onCaptionRotationChanged;
+  final ValueChanged<String> onBadgeStyleSelected;
+  final ValueChanged<int> onBadgeFillColorSelected;
+  final ValueChanged<int> onBadgeTextColorSelected;
+  final ValueChanged<String> onBadgeAnimSelected;
+  final VoidCallback? onApplyBadgeToAll;
   final VoidCallback? onMoveUp;
   final VoidCallback? onMoveDown;
   final VoidCallback? onRemove;
@@ -768,24 +800,87 @@ class _FrameCard extends StatelessWidget {
   /// existing badge picker (currently handled via chips below).
   final VoidCallback? onEditBadge;
 
+  @override
+  State<_FrameCard> createState() => _FrameCardState();
+}
+
+class _FrameCardState extends State<_FrameCard> {
+  /// Incremented on each ▶ tap so `_LiveThumbnail.didUpdateWidget` can
+  /// detect the change and re-run the entrance animation.
+  int _replayTick = 0;
+
   bool get _hasAny =>
-      captionCtrl.text.isNotEmpty ||
-      priceCtrl.text.isNotEmpty  ||
-      mrpCtrl.text.isNotEmpty    ||
-      offerBadge.isNotEmpty;
+      widget.captionCtrl.text.isNotEmpty ||
+      widget.priceCtrl.text.isNotEmpty ||
+      widget.mrpCtrl.text.isNotEmpty ||
+      widget.offerBadge.isNotEmpty;
 
   // Savings chip data
   String? get _savingsText {
-    final mrp   = double.tryParse(mrpCtrl.text.trim());
-    final offer = double.tryParse(priceCtrl.text.trim());
+    final mrp = double.tryParse(widget.mrpCtrl.text.trim());
+    final offer = double.tryParse(widget.priceCtrl.text.trim());
     if (mrp == null || offer == null || mrp <= offer) return null;
     final saved = (mrp - offer).round();
-    final pct   = ((mrp - offer) / mrp * 100).round();
+    final pct = ((mrp - offer) / mrp * 100).round();
     return 'You save ₹$saved ($pct% off)';
   }
 
   @override
   Widget build(BuildContext context) {
+    final index = widget.index;
+    final total = widget.total;
+    final path = widget.path;
+    final captionCtrl = widget.captionCtrl;
+    final priceCtrl = widget.priceCtrl;
+    final mrpCtrl = widget.mrpCtrl;
+    final captionFocus = widget.captionFocus;
+    final priceFocus = widget.priceFocus;
+    final mrpFocus = widget.mrpFocus;
+    final mrpTag = widget.mrpTag;
+    final offerBadge = widget.offerBadge;
+    final badgeSize = widget.badgeSize;
+    final duration = widget.duration;
+    final textPosition = widget.textPosition;
+    final captionStyleId = widget.captionStyleId;
+    final captionStyleResolved = widget.captionStyleResolved;
+    final captionUppercase = widget.captionUppercase;
+    final captionRotation = widget.captionRotation;
+    final captionAnimStyle = widget.captionAnimStyle;
+    final bgRemoval = widget.bgRemoval;
+    final onBgRemovalToggle = widget.onBgRemovalToggle;
+    final bgColor = widget.bgColor;
+    final onBgColorChanged = widget.onBgColorChanged;
+    final onCaptionChanged = widget.onCaptionChanged;
+    final onPriceChanged = widget.onPriceChanged;
+    final onMrpChanged = widget.onMrpChanged;
+    final onBadgeSelected = widget.onBadgeSelected;
+    final onBadgeSizeSelected = widget.onBadgeSizeSelected;
+    final onDurationSelected = widget.onDurationSelected;
+    final onPositionSelected = widget.onPositionSelected;
+    final onCaptionStyleSelected = widget.onCaptionStyleSelected;
+    final onCaptionFontSelected = widget.onCaptionFontSelected;
+    final onCaptionTextColorSelected = widget.onCaptionTextColorSelected;
+    final onCaptionPillColorSelected = widget.onCaptionPillColorSelected;
+    final onCaptionEffectSelected = widget.onCaptionEffectSelected;
+    final onCaptionUppercaseToggled = widget.onCaptionUppercaseToggled;
+    final onCaptionMotionSelected = widget.onCaptionMotionSelected;
+    final onCaptionRotationChanged = widget.onCaptionRotationChanged;
+    final onBadgeStyleSelected = widget.onBadgeStyleSelected;
+    final onBadgeFillColorSelected = widget.onBadgeFillColorSelected;
+    final onBadgeTextColorSelected = widget.onBadgeTextColorSelected;
+    final onBadgeAnimSelected = widget.onBadgeAnimSelected;
+    final onApplyBadgeToAll = widget.onApplyBadgeToAll;
+    final badgeStyleId = widget.badgeStyleId;
+    final badgeStyleResolved = widget.badgeStyleResolved;
+    final badgeAnimStyle = widget.badgeAnimStyle;
+    final onMoveUp = widget.onMoveUp;
+    final onMoveDown = widget.onMoveDown;
+    final onRemove = widget.onRemove;
+    final onApplyToAll = widget.onApplyToAll;
+    final onPreview = widget.onPreview;
+    final onEditCaption = widget.onEditCaption;
+    final onEditPrice = widget.onEditPrice;
+    final onEditBadge = widget.onEditBadge;
     final savings = _savingsText;
 
     return AnimatedContainer(
@@ -905,17 +1000,20 @@ class _FrameCard extends StatelessWidget {
                         offerBadge: offerBadge,
                         badgeSize: badgeSize,
                         textPosition: textPosition,
+                        captionStyleId: captionStyleId,
+                        captionStyleOverride: captionStyleResolved,
+                        uppercase: captionUppercase,
+                        rotationDegrees: captionRotation,
+                        animStyle: captionAnimStyle,
+                        replayTick: _replayTick,
+                        badgeStyle: badgeStyleResolved,
+                        badgeAnimStyle: badgeAnimStyle,
                         fullSize: true,
                         bgRemoval: bgRemoval,
                         bgColorArgb: bgColor,
                         onCaptionTap: onEditCaption,
                         onPriceTap: onEditPrice,
                         onBadgeTap: onEditBadge,
-                        onCaptionDrag: (offset) {
-                          onPositionSelected(
-                            TextPosition.fromOffsetWithPresetSnap(offset).raw,
-                          );
-                        },
                       ),
                       // Fullscreen chip — bottom-right corner, only now
                       // triggers fullscreen preview (not the whole surface)
@@ -945,6 +1043,45 @@ class _FrameCard extends StatelessWidget {
                                             color: Colors.white,
                                             fontSize: 10,
                                             fontWeight: FontWeight.w600)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      // ▶ Play chip — bottom-left. Replays the entrance
+                      // animation in real time inside the inline preview.
+                      if (captionCtrl.text.isNotEmpty &&
+                          captionAnimStyle != 'none')
+                        Positioned(
+                          bottom: 10, left: 10,
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(8),
+                              onTap: () {
+                                PrHaptics.tap();
+                                setState(() => _replayTick++);
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: AppColors.brandEmber
+                                      .withValues(alpha: 0.92),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.play_arrow_rounded,
+                                        color: Colors.white, size: 16),
+                                    SizedBox(width: 4),
+                                    Text('Play',
+                                        style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w800)),
                                   ],
                                 ),
                               ),
@@ -996,24 +1133,29 @@ class _FrameCard extends StatelessWidget {
                   maxLines: 2,
                   onChanged: onCaptionChanged,
                 ),
-                const SizedBox(height: 6),
-                // Drag-to-position hint (replaces the 3-position picker —
-                // the caption on the preview above is draggable).
-                Row(
-                  children: [
-                    const Icon(Icons.drag_indicator_rounded,
-                        size: 12, color: AppColors.textDisabled),
-                    const SizedBox(width: 4),
-                    Text(
-                      textPosition.startsWith('custom:')
-                          ? 'Drag the caption on the preview to reposition'
-                          : 'Tap the preview to edit · drag the caption to position',
-                      style: AppTextStyles.labelSmall.copyWith(
-                        color: AppColors.textDisabled,
-                        fontSize: 10.5,
-                      ),
-                    ),
-                  ],
+                const SizedBox(height: 10),
+                _CaptionPositionPicker(
+                  selected: textPosition,
+                  onSelected: onPositionSelected,
+                ),
+                const SizedBox(height: 10),
+                _CaptionStyleToolbar(
+                  resolvedStyle: captionStyleResolved,
+                  styleId: captionStyleId,
+                  uppercase: captionUppercase,
+                  rotationDegrees: captionRotation,
+                  animStyle: captionAnimStyle,
+                  sampleText: captionCtrl.text.trim().isEmpty
+                      ? 'Caption'
+                      : captionCtrl.text.trim(),
+                  onStylePicked: onCaptionStyleSelected,
+                  onFontPicked: onCaptionFontSelected,
+                  onTextColorPicked: onCaptionTextColorSelected,
+                  onPillColorPicked: onCaptionPillColorSelected,
+                  onEffectPicked: onCaptionEffectSelected,
+                  onUppercaseToggled: onCaptionUppercaseToggled,
+                  onMotionPicked: onCaptionMotionSelected,
+                  onRotationChanged: onCaptionRotationChanged,
                 ),
                 if (captionCtrl.text.isNotEmpty && onApplyToAll != null) ...[
                   const SizedBox(height: 6),
@@ -1126,33 +1268,44 @@ class _FrameCard extends StatelessWidget {
                 // ── Offer badge ───────────────────────────────────────
                 _SectionLabel(Icons.local_offer_rounded, 'Offer Badge'),
                 const SizedBox(height: 10),
+                // Free-form text field (any label the user types), plus a
+                // quick-chip row for common choices. The style is
+                // controlled separately via the Badge Style row below.
+                _BadgeTextField(
+                  text: offerBadge,
+                  onChanged: onBadgeSelected,
+                ),
+                const SizedBox(height: 8),
                 Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
+                  spacing: 6,
+                  runSpacing: 6,
                   children: [
-                    _BadgeChip(
-                      label: 'None',
-                      textColor: AppColors.textSecondary,
-                      bgColor: AppColors.bgElevated,
-                      borderColor: offerBadge.isEmpty
-                          ? AppColors.primary
-                          : AppColors.divider,
-                      isSelected: offerBadge.isEmpty,
-                      onTap: () => onBadgeSelected(''),
-                    ),
-                    ..._badges.map((b) => _BadgeChip(
-                      label: b.$1,
-                      textColor: b.$2,
-                      bgColor: b.$3,
-                      borderColor: offerBadge == b.$1
-                          ? b.$2
-                          : b.$2.withValues(alpha: 0.25),
-                      isSelected: offerBadge == b.$1,
-                      onTap: () =>
-                          onBadgeSelected(offerBadge == b.$1 ? '' : b.$1),
-                    )),
+                    for (final label in const [
+                      'SALE', 'NEW', 'HOT', '50% OFF', 'LIMITED', 'TODAY ONLY'
+                    ])
+                      _QuickBadgeChip(
+                        label: label,
+                        selected: offerBadge == label,
+                        onTap: () =>
+                            onBadgeSelected(offerBadge == label ? '' : label),
+                      ),
                   ],
                 ),
+                const SizedBox(height: 12),
+                _BadgeStyleToolbar(
+                  styleId: badgeStyleId,
+                  resolvedStyle: badgeStyleResolved,
+                  animStyle: badgeAnimStyle,
+                  sampleText: offerBadge.isEmpty ? 'SALE' : offerBadge,
+                  onStylePicked: onBadgeStyleSelected,
+                  onFillColorPicked: onBadgeFillColorSelected,
+                  onTextColorPicked: onBadgeTextColorSelected,
+                  onAnimPicked: onBadgeAnimSelected,
+                ),
+                if (offerBadge.isNotEmpty && onApplyBadgeToAll != null) ...[
+                  const SizedBox(height: 6),
+                  _ApplyToAllLink(onTap: onApplyBadgeToAll),
+                ],
 
                 const SizedBox(height: 18),
                 _Divider(),
@@ -1318,14 +1471,20 @@ class _LiveThumbnail extends StatefulWidget {
     required this.offerBadge,
     required this.textPosition,
     this.badgeSize = 'medium',
+    this.captionStyleId = CaptionStyle.defaultStyleId,
+    this.captionStyleOverride,
+    this.uppercase = false,
+    this.rotationDegrees = 0,
+    this.animStyle = 'none',
+    this.replayTick = 0,
+    this.badgeStyle,
+    this.badgeAnimStyle = 'none',
     this.fullSize = false,
     this.bgRemoval = false,
     this.bgColorArgb = 0,
     this.onCaptionTap,
     this.onPriceTap,
     this.onBadgeTap,
-    this.onCaptionDrag,
-    this.onCaptionDragEnd,
   });
   final String path;
   final String caption;
@@ -1334,6 +1493,40 @@ class _LiveThumbnail extends StatefulWidget {
   final String offerBadge;
   final String textPosition;
   final String badgeSize;
+  final String captionStyleId;
+
+  /// Optional already-resolved style (preset + overrides applied). When
+  /// non-null this short-circuits the preset lookup — callers that have a
+  /// fully resolved style from `VideoProject.resolvedCaptionStyleFor` can
+  /// pass it straight through, ensuring preview matches export.
+  final CaptionStyle? captionStyleOverride;
+
+  /// Per-frame uppercase toggle — transforms the displayed caption to all
+  /// caps without mutating the stored text.
+  final bool uppercase;
+
+  /// Per-frame caption rotation in degrees (−15 to 15). Applied as a
+  /// `Transform.rotate` around the caption's own centre so the pill and
+  /// text tilt together; position on the frame stays put.
+  final int rotationDegrees;
+
+  /// Project-level entrance animation (`none`/`fade`/`slide_up`/
+  /// `typewriter`/`wipe`/`pop`). Used by the replay button on the inline
+  /// preview to run the real-time animation in Flutter.
+  final String animStyle;
+
+  /// Incremented by the parent (`_FrameCard`) each time the user taps the
+  /// ▶ replay chip. When the value changes, `didUpdateWidget` kicks off a
+  /// fresh play of [animStyle].
+  final int replayTick;
+
+  /// Resolved per-frame badge style (preset + colour overrides). When
+  /// null, the default style's look is used.
+  final BadgeStyle? badgeStyle;
+
+  /// Badge entrance animation — `'none'` / `'pop'` / `'slide_in'` /
+  /// `'rotate_in'` / `'pulse'`. Plays as the caption entrance replays.
+  final String badgeAnimStyle;
   final bool fullSize;
 
   /// When true, run subject segmentation on the asset and render the cut-out
@@ -1351,30 +1544,23 @@ class _LiveThumbnail extends StatefulWidget {
   final VoidCallback? onPriceTap;
   final VoidCallback? onBadgeTap;
 
-  /// Drag callbacks for free-form caption positioning. When set, the caption
-  /// region becomes pan-draggable; the receiver should write the new
-  /// fractional Offset into `frameTextPositions` via
-  /// `TextPosition.fromOffsetWithPresetSnap(o).raw`.
-  final void Function(Offset fractional)? onCaptionDrag;
-  final VoidCallback? onCaptionDragEnd;
-
   @override
   State<_LiveThumbnail> createState() => _LiveThumbnailState();
 }
 
-class _LiveThumbnailState extends State<_LiveThumbnail> {
+class _LiveThumbnailState extends State<_LiveThumbnail>
+    with SingleTickerProviderStateMixin {
   static const _videoExts = {'.mp4', '.mov', '.3gp', '.mkv', '.avi', '.webm'};
 
   Uint8List? _videoThumb;
   bool _loadingThumb = false;
 
-  /// While the caption is being dragged, this holds the live fractional
-  /// offset so we can render guides and the latest position without waiting
-  /// for the parent to write back through setState.
-  Offset? _liveDragOffset;
-
-  /// Active snap guide during drag — drives the ember alignment lines.
-  TextSnapGuide _snapGuide = const TextSnapGuide();
+  /// Drives the entrance-animation replay triggered by the ▶ chip. 0 → 1
+  /// during play; otherwise sits at 1 so the caption is shown normally.
+  AnimationController? _entranceCtrl;
+  bool get _isReplaying =>
+      (_entranceCtrl?.isAnimating ?? false) ||
+      ((_entranceCtrl?.value ?? 1) < 1);
 
   // ── Real-time background removal state ────────────────────────────────
   /// Path to the subject-isolated PNG for the current (asset, colour) pair.
@@ -1404,6 +1590,48 @@ class _LiveThumbnailState extends State<_LiveThumbnail> {
     super.initState();
     if (_isVideo) _loadThumb();
     _maybeProcessBg();
+    _entranceCtrl = AnimationController(
+      vsync: this,
+      // Max duration across the supported anims (typewriter is the longest).
+      duration: const Duration(milliseconds: 900),
+    )
+      ..addListener(() => setState(() {}))
+      ..value = 1.0;
+  }
+
+  @override
+  void dispose() {
+    _entranceCtrl?.dispose();
+    super.dispose();
+  }
+
+  /// Kick off a one-shot replay of the entrance animation. Called by the
+  /// ▶ chip on the inline preview. The controller's value drives the
+  /// caption's opacity / translation / scale / clip width — the math
+  /// mirrors what the FFmpeg filter applies at export time.
+  void _replayEntrance() {
+    final c = _entranceCtrl;
+    if (c == null) return;
+    c.duration = _entranceDuration(widget.animStyle);
+    c
+      ..value = 0.0
+      ..forward();
+  }
+
+  Duration _entranceDuration(String style) {
+    switch (style) {
+      case 'fade':
+      case 'slide_up':
+        return const Duration(milliseconds: 350);
+      case 'pop':
+        return const Duration(milliseconds: 300);
+      case 'wipe':
+        return const Duration(milliseconds: 350);
+      case 'typewriter':
+        return const Duration(milliseconds: 800);
+      default:
+        return const Duration(milliseconds: 300);
+    }
   }
 
   @override
@@ -1418,6 +1646,9 @@ class _LiveThumbnailState extends State<_LiveThumbnail> {
         old.bgRemoval != widget.bgRemoval ||
         old.bgColorArgb != widget.bgColorArgb) {
       _maybeProcessBg();
+    }
+    if (old.replayTick != widget.replayTick) {
+      _replayEntrance();
     }
   }
 
@@ -1476,9 +1707,6 @@ class _LiveThumbnailState extends State<_LiveThumbnail> {
     final textPosition= widget.textPosition;
     final badgeSize   = widget.badgeSize;
     final fullSize    = widget.fullSize;
-    final badgeData = offerBadge.isNotEmpty
-        ? _badges.where((b) => b.$1 == offerBadge).firstOrNull
-        : null;
 
     const sizeFactors = <String, double>{
       'small': 0.65, 'medium': 1.0, 'large': 1.50,
@@ -1493,13 +1721,10 @@ class _LiveThumbnailState extends State<_LiveThumbnail> {
     final edgeInset       = fullSize ? 12.0 : 5.0;
 
     final pos = TextPosition.parse(textPosition);
-    final activeOffset = _liveDragOffset ?? pos.offset;
-    final isDragging = _liveDragOffset != null;
     final isInteractive = fullSize &&
         (widget.onCaptionTap != null ||
             widget.onPriceTap != null ||
-            widget.onBadgeTap != null ||
-            widget.onCaptionDrag != null);
+            widget.onBadgeTap != null);
 
     final Widget content = LayoutBuilder(builder: (ctx, box) {
       return Stack(
@@ -1541,28 +1766,24 @@ class _LiveThumbnailState extends State<_LiveThumbnail> {
               ),
             ),
 
-          // Subtle scrim only for legacy presets (top/center/bottom).
-          // Custom-positioned captions rely on the text's own drop shadow.
-          if (caption.isNotEmpty && !pos.isCustom && !isDragging)
-            _buildLegacyScrim(textPosition, fullSize),
+          // Canva-style caption: no full-frame scrim; a pill hugging the
+          // text plus the text's drop shadow handles legibility.
 
-          // Caption — positioned by fractional Offset, pan-draggable in
-          // fullSize mode when onCaptionDrag is wired.
+          // Caption at the selected preset (top / center / bottom).
           if (caption.isNotEmpty)
             _buildCaption(
-              caption: caption,
+              caption: widget.uppercase ? caption.toUpperCase() : caption,
+              style: widget.captionStyleOverride ??
+                  CaptionStyle.byId(widget.captionStyleId),
               fontSize: captionFontSize,
-              offset: activeOffset,
+              offset: pos.offset,
               boxSize: Size(box.maxWidth, box.maxHeight),
               edgeInset: edgeInset,
-              draggable: isInteractive && widget.onCaptionDrag != null,
+              rotationDegrees: widget.rotationDegrees,
+              // During replay, `progress < 1` — _applyEntrance below uses it
+              // to drive opacity / slide / scale / clip.
+              entranceProgress: _entranceCtrl?.value ?? 1.0,
               tappable: isInteractive && widget.onCaptionTap != null,
-            ),
-
-          // Snap guides during drag — thin ember alignment lines.
-          if (isDragging && _snapGuide.hasSnap)
-            Positioned.fill(
-              child: IgnorePointer(child: _SnapGuideOverlay(guide: _snapGuide)),
             ),
 
           // Price / MRP badge — top-right, tappable.
@@ -1608,28 +1829,25 @@ class _LiveThumbnailState extends State<_LiveThumbnail> {
               ),
             ),
 
-          if (badgeData != null)
+          // Offer badge — top-left. Uses the shared StyledBadge so its
+          // shape + colours + decor match what the renderer exports.
+          // Entrance animation rides the same controller as the caption so
+          // Play/Replay animates both together.
+          if (offerBadge.isNotEmpty)
             Positioned(
-              top: edgeInset, left: edgeInset,
+              top: edgeInset,
+              left: edgeInset,
               child: _tapShell(
                 enabled: isInteractive && widget.onBadgeTap != null,
                 onTap: widget.onBadgeTap,
-                child: Container(
-                  padding: EdgeInsets.symmetric(
-                      horizontal: badgePadH, vertical: badgePadV),
-                  decoration: BoxDecoration(
-                    color: badgeData.$2,
-                    borderRadius: BorderRadius.circular(6),
-                    boxShadow: [BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.3),
-                        blurRadius: 4)],
+                child: _applyBadgeEntrance(
+                  animStyle: widget.badgeAnimStyle,
+                  progress: _entranceCtrl?.value ?? 1.0,
+                  child: StyledBadge(
+                    style: (widget.badgeStyle ?? BadgeStyle.defaultStyle),
+                    text: offerBadge.replaceAll(' 🔥', ''),
+                    fontSize: badgeFontSize,
                   ),
-                  child: Text(badgeData.$1.replaceAll(' 🔥', ''),
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: badgeFontSize,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.3)),
                 ),
               ),
             ),
@@ -1734,148 +1952,157 @@ class _LiveThumbnailState extends State<_LiveThumbnail> {
     );
   }
 
-  // ── Legacy scrim (top/center/bottom gradient band) ──────────────────────
-  Widget _buildLegacyScrim(String textPosition, bool fullSize) {
-    if (textPosition == 'center') {
-      return Positioned.fill(
-        child: Align(
-          alignment: Alignment.center,
-          child: Container(
-            height: fullSize ? 120 : 40,
-            decoration: const BoxDecoration(color: Color(0x88000000)),
-          ),
-        ),
-      );
-    }
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: textPosition == 'top'
-              ? Alignment.bottomCenter
-              : Alignment.topCenter,
-          end: textPosition == 'top'
-              ? Alignment.topCenter
-              : Alignment.bottomCenter,
-          colors: const [Colors.transparent, Color(0xCC000000)],
-          stops: const [0.4, 1.0],
-        ),
-      ),
-    );
-  }
-
-  // ── Caption rendered at fractional offset with gestures ─────────────────
-  //
-  // Gestures use long-press-drag (not pan) so the drag recogniser wins the
-  // gesture arena against the enclosing ListView's vertical scroll. Tap
-  // fires instantly via `onTap`; drag requires a ~250 ms hold to start,
-  // signalled by a haptic pulse + ember ring around the caption.
-  //
-  // The GestureDetector wraps ONLY the text widget (not a full-size Align),
-  // so tapping empty areas of the frame doesn't accidentally move the
-  // caption; empty taps fall through to the empty-state hint underneath.
+  // Caption painted at the chosen preset offset; tapping opens the editor.
+  // [style] provides the font / colour / pill / effect selected in the
+  // Style sub-sheet; `googleFontsStyleFor` matches the one the renderer
+  // uses, so preview and export stay pixel-aligned.
   Widget _buildCaption({
     required String caption,
+    required CaptionStyle style,
     required double fontSize,
     required Offset offset,
     required Size boxSize,
     required double edgeInset,
-    required bool draggable,
+    required int rotationDegrees,
+    required double entranceProgress,
     required bool tappable,
   }) {
     final maxCapWidth =
         (boxSize.width - edgeInset * 2).clamp(32.0, double.infinity);
 
-    Widget captionText = Text(
+    // Pill scales with the caption font so it looks right in both the
+    // small-card preview (fontSize ~7) and the full-size preview (~18).
+    final double padH = fontSize * 0.75;
+    final double padV = fontSize * 0.35;
+    final double radius = fontSize * 0.7;
+
+    final textWidget = Text(
       caption,
-      style: TextStyle(
-        color: Colors.white,
-        fontSize: fontSize,
-        fontWeight: FontWeight.w800,
-        shadows: const [
-          Shadow(color: Colors.black, blurRadius: 12, offset: Offset(1, 1)),
-          Shadow(color: Colors.black, blurRadius: 6),
-        ],
-      ),
+      style: googleFontsStyleFor(style, fontSize: fontSize),
       maxLines: 2,
       overflow: TextOverflow.ellipsis,
       textAlign: TextAlign.center,
     );
 
-    // Add inner padding so the gesture hit box extends slightly beyond the
-    // glyphs themselves — easier to grab on thin text.
-    Widget captionBox = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: _liveDragOffset != null
-          ? BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.35),
-              border: Border.all(
-                color: AppColors.brandEmber,
-                width: 1.5,
-              ),
-              borderRadius: BorderRadius.circular(8),
-            )
-          : null,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: maxCapWidth),
-        child: captionText,
+    Widget captionBox = ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxCapWidth),
+      child: IntrinsicWidth(
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: padH, vertical: padV),
+          decoration: style.pillColor != null
+              ? BoxDecoration(
+                  color: style.pillColor,
+                  borderRadius: BorderRadius.circular(radius),
+                )
+              : null,
+          child: textWidget,
+        ),
       ),
     );
 
-    if (tappable || draggable) {
+    if (tappable) {
       captionBox = GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: tappable
-            ? () {
-                PrHaptics.tap();
-                widget.onCaptionTap?.call();
-              }
-            : null,
-        // Long-press-drag — wins the arena over the parent ListView scroll.
-        onLongPressStart: draggable
-            ? (_) {
-                PrHaptics.select();
-                setState(() {
-                  _liveDragOffset = offset;
-                  _snapGuide = const TextSnapGuide();
-                });
-              }
-            : null,
-        onLongPressMoveUpdate: draggable
-            ? (d) {
-                // `offsetFromOrigin` is the total drag since long-press start.
-                final base = offset;
-                final dx = d.offsetFromOrigin.dx / boxSize.width;
-                final dy = d.offsetFromOrigin.dy / boxSize.height;
-                final raw = Offset(
-                  (base.dx + dx).clamp(0.05, 0.95),
-                  (base.dy + dy).clamp(0.05, 0.95),
-                );
-                final guide = applyDragSnap(raw);
-                final snapped = snapOffset(raw, guide);
-                setState(() {
-                  _liveDragOffset = snapped;
-                  _snapGuide = guide;
-                });
-                widget.onCaptionDrag?.call(snapped);
-              }
-            : null,
-        onLongPressEnd: draggable
-            ? (_) {
-                widget.onCaptionDragEnd?.call();
-                setState(() {
-                  _liveDragOffset = null;
-                  _snapGuide = const TextSnapGuide();
-                });
-              }
-            : null,
+        onTap: () {
+          PrHaptics.tap();
+          widget.onCaptionTap?.call();
+        },
         child: captionBox,
       );
     }
+
+    if (rotationDegrees != 0) {
+      captionBox = Transform.rotate(
+        angle: rotationDegrees * 3.14159265358979 / 180.0,
+        child: captionBox,
+      );
+    }
+
+    // Entrance replay — mirrors the FFmpeg filter mathematically.
+    captionBox = _applyEntrance(
+      child: captionBox,
+      caption: caption,
+      style: style,
+      fontSize: fontSize,
+      progress: entranceProgress,
+    );
 
     return Align(
       alignment: Alignment(offset.dx * 2 - 1, offset.dy * 2 - 1),
       child: captionBox,
     );
+  }
+
+  /// Apply the active entrance-animation transform to [child] for the given
+  /// [progress] (0 = first frame, 1 = settled final pose). Matches the
+  /// export-time math in `motion_style_engine.dart` and what TextRenderer
+  /// hands to FFmpeg.
+  Widget _applyEntrance({
+    required Widget child,
+    required String caption,
+    required CaptionStyle style,
+    required double fontSize,
+    required double progress,
+  }) {
+    // Fully settled — no wrapper cost.
+    if (progress >= 1.0) return child;
+    final anim = widget.animStyle;
+    switch (anim) {
+      case 'fade':
+        return Opacity(opacity: progress.clamp(0, 1), child: child);
+      case 'slide_up':
+        final dy = (1 - progress) * (fontSize * 4);
+        return Transform.translate(offset: Offset(0, dy), child: child);
+      case 'pop':
+        final s = (0.6 + 0.4 * progress).clamp(0.6, 1.0);
+        return Transform.scale(scale: s, child: child);
+      case 'typewriter':
+      case 'wipe':
+        // Mirrors the FFmpeg filter's overlay-x slide from off-screen left.
+        // We don't have the inline preview's full width here, so we use a
+        // generous translate that shifts the caption block ~300px (well
+        // past its own width for the small-card preview). At progress=1
+        // the offset becomes 0 so the caption settles in-place.
+        final dx = (1 - progress) * -300.0;
+        return Transform.translate(offset: Offset(dx, 0), child: child);
+      default:
+        return child;
+    }
+  }
+
+  /// Entrance wrapper for the offer badge. Different defaults than the
+  /// caption's: badges usually "pop" in, so we treat that as the default.
+  Widget _applyBadgeEntrance({
+    required Widget child,
+    required String animStyle,
+    required double progress,
+  }) {
+    if (progress >= 1.0) return child;
+    switch (animStyle) {
+      case 'pop':
+        final s = (0.5 + 0.5 * progress).clamp(0.5, 1.0);
+        return Transform.scale(scale: s, child: child);
+      case 'slide_in':
+        // From the left edge into position.
+        final dx = (1 - progress) * -120.0;
+        return Transform.translate(offset: Offset(dx, 0), child: child);
+      case 'rotate_in':
+        final angle = (1 - progress) * 0.7; // ~40° over the whole anim
+        final s = (0.6 + 0.4 * progress).clamp(0.6, 1.0);
+        return Transform.rotate(
+          angle: -angle,
+          child: Transform.scale(scale: s, child: child),
+        );
+      case 'pulse':
+        // Peaks at mid-progress (1.2×) then settles to 1.0.
+        final peak = 1 - (progress * 2 - 1).abs();
+        return Transform.scale(
+          scale: (1.0 + 0.2 * peak).clamp(1.0, 1.2),
+          child: child,
+        );
+      default:
+        return child;
+    }
   }
 
   Widget _captionText(String text, double fontSize) => Text(
@@ -2148,6 +2375,200 @@ class _Divider extends StatelessWidget {
 
 // ── Fullscreen video preview (plays inside 9:16 dialog) ──────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Fullscreen preview dialog — wraps the 9:16 image/video body, the close
+// chip, and (when the project has an entrance animation) a ▶ Play chip
+// that replays the animation. Stateful so the replayTick survives dialog
+// rebuilds while the user pops out and back.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _FullPreviewDialog extends StatefulWidget {
+  const _FullPreviewDialog({
+    required this.path,
+    required this.caption,
+    required this.priceTag,
+    required this.mrpTag,
+    required this.offerBadge,
+    required this.textPosition,
+    required this.badgeSize,
+    required this.captionStyle,
+    required this.captionStyleId,
+    required this.captionUppercase,
+    required this.captionRotation,
+    required this.animStyle,
+    required this.badgeStyle,
+    required this.badgeAnimStyle,
+    required this.bgRemoval,
+    required this.bgColorArgb,
+    required this.isVideo,
+  });
+
+  final String path;
+  final String caption;
+  final String priceTag;
+  final String mrpTag;
+  final String offerBadge;
+  final String textPosition;
+  final String badgeSize;
+  final CaptionStyle captionStyle;
+  final String captionStyleId;
+  final bool captionUppercase;
+  final int captionRotation;
+  final String animStyle;
+  final BadgeStyle badgeStyle;
+  final String badgeAnimStyle;
+  final bool bgRemoval;
+  final int bgColorArgb;
+  final bool isVideo;
+
+  @override
+  State<_FullPreviewDialog> createState() => _FullPreviewDialogState();
+}
+
+class _FullPreviewDialogState extends State<_FullPreviewDialog> {
+  int _replayTick = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Auto-play on open so users see the entrance animation immediately
+    // after tapping Fullscreen.
+    if (widget.animStyle != 'none' && widget.caption.isNotEmpty) {
+      _replayTick = 1;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final showPlay =
+        widget.caption.isNotEmpty && widget.animStyle != 'none';
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding:
+          const EdgeInsets.symmetric(horizontal: 40, vertical: 60),
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [
+          AspectRatio(
+            aspectRatio: 9 / 16,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  widget.isVideo
+                      ? _FullscreenVideoPreview(
+                          path: widget.path,
+                          caption: widget.caption,
+                          priceTag: widget.priceTag,
+                          mrpTag: widget.mrpTag,
+                          offerBadge: widget.offerBadge,
+                          textPosition: widget.textPosition,
+                          badgeSize: widget.badgeSize,
+                          captionStyle: widget.captionStyle,
+                          uppercase: widget.captionUppercase,
+                          rotationDegrees: widget.captionRotation,
+                          animStyle: widget.animStyle,
+                          replayTick: _replayTick,
+                          badgeStyle: widget.badgeStyle,
+                          badgeAnimStyle: widget.badgeAnimStyle,
+                        )
+                      : _LiveThumbnail(
+                          path: widget.path,
+                          caption: widget.caption,
+                          priceTag: widget.priceTag,
+                          mrpTag: widget.mrpTag,
+                          offerBadge: widget.offerBadge,
+                          badgeSize: widget.badgeSize,
+                          textPosition: widget.textPosition,
+                          captionStyleId: widget.captionStyleId,
+                          captionStyleOverride: widget.captionStyle,
+                          uppercase: widget.captionUppercase,
+                          rotationDegrees: widget.captionRotation,
+                          animStyle: widget.animStyle,
+                          replayTick: _replayTick,
+                          badgeStyle: widget.badgeStyle,
+                          badgeAnimStyle: widget.badgeAnimStyle,
+                          fullSize: true,
+                          bgRemoval: widget.bgRemoval,
+                          bgColorArgb: widget.bgColorArgb,
+                        ),
+                  if (showPlay)
+                    Positioned(
+                      bottom: 14,
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(999),
+                            onTap: () {
+                              PrHaptics.tap();
+                              setState(() => _replayTick++);
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: AppColors.brandEmber
+                                    .withValues(alpha: 0.92),
+                                borderRadius: BorderRadius.circular(999),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black
+                                        .withValues(alpha: 0.3),
+                                    blurRadius: 8,
+                                  ),
+                                ],
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.play_arrow_rounded,
+                                      color: Colors.white, size: 18),
+                                  SizedBox(width: 4),
+                                  Text('Replay',
+                                      style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w800)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          Positioned(
+            top: -14,
+            right: -14,
+            child: GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: AppColors.bgElevated,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppColors.divider),
+                ),
+                child: const Icon(Icons.close_rounded,
+                    color: Colors.white, size: 18),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _FullscreenVideoPreview extends StatefulWidget {
   const _FullscreenVideoPreview({
     required this.path,
@@ -2157,6 +2578,13 @@ class _FullscreenVideoPreview extends StatefulWidget {
     required this.offerBadge,
     required this.textPosition,
     required this.badgeSize,
+    required this.captionStyle,
+    required this.uppercase,
+    required this.rotationDegrees,
+    this.animStyle = 'none',
+    this.replayTick = 0,
+    this.badgeStyle,
+    this.badgeAnimStyle = 'none',
   });
   final String path;
   final String caption;
@@ -2165,6 +2593,13 @@ class _FullscreenVideoPreview extends StatefulWidget {
   final String offerBadge;
   final String textPosition;
   final String badgeSize;
+  final CaptionStyle captionStyle;
+  final bool uppercase;
+  final int rotationDegrees;
+  final String animStyle;
+  final int replayTick;
+  final BadgeStyle? badgeStyle;
+  final String badgeAnimStyle;
 
   @override
   State<_FullscreenVideoPreview> createState() => _FullscreenVideoPreviewState();
@@ -2240,6 +2675,13 @@ class _FullscreenVideoPreviewState extends State<_FullscreenVideoPreview> {
             offerBadge: widget.offerBadge,
             textPosition: widget.textPosition,
             badgeSize: widget.badgeSize,
+            captionStyle: widget.captionStyle,
+            badgeStyle: widget.badgeStyle,
+            badgeAnimStyle: widget.badgeAnimStyle,
+            uppercase: widget.uppercase,
+            rotationDegrees: widget.rotationDegrees,
+            animStyle: widget.animStyle,
+            replayTick: widget.replayTick,
           ),
 
           // ── Play/pause indicator ──────────────────────────────────
@@ -2286,7 +2728,7 @@ class _FullscreenVideoPreviewState extends State<_FullscreenVideoPreview> {
 }
 
 // Caption + badge overlay extracted so it's shared between image and video previews
-class _OverlayLayer extends StatelessWidget {
+class _OverlayLayer extends StatefulWidget {
   const _OverlayLayer({
     required this.caption,
     required this.priceTag,
@@ -2294,6 +2736,13 @@ class _OverlayLayer extends StatelessWidget {
     required this.offerBadge,
     required this.textPosition,
     required this.badgeSize,
+    this.captionStyle,
+    this.badgeStyle,
+    this.badgeAnimStyle = 'none',
+    this.uppercase = false,
+    this.rotationDegrees = 0,
+    this.animStyle = 'none',
+    this.replayTick = 0,
   });
   final String caption;
   final String priceTag;
@@ -2302,12 +2751,116 @@ class _OverlayLayer extends StatelessWidget {
   final String textPosition;
   final String badgeSize;
 
+  /// Resolved caption style (preset + per-frame overrides). Null falls back
+  /// to [CaptionStyle.defaultStyle] so legacy callers don't crash.
+  final CaptionStyle? captionStyle;
+
+  /// Resolved per-frame badge style. Null falls back to the default preset.
+  final BadgeStyle? badgeStyle;
+  final String badgeAnimStyle;
+  final bool uppercase;
+  final int rotationDegrees;
+  final String animStyle;
+  final int replayTick;
+
+  @override
+  State<_OverlayLayer> createState() => _OverlayLayerState();
+}
+
+class _OverlayLayerState extends State<_OverlayLayer>
+    with SingleTickerProviderStateMixin {
+  AnimationController? _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: _durationFor(widget.animStyle),
+    )..addListener(() => setState(() {}));
+    // Auto-play on mount — users open the Fullscreen dialog wanting to see
+    // the animation, so fire it once as soon as the layer lives.
+    if (widget.animStyle != 'none' && widget.caption.isNotEmpty) {
+      _ctrl!
+        ..value = 0.0
+        ..forward();
+    } else {
+      _ctrl!.value = 1.0;
+    }
+  }
+
+  @override
+  void didUpdateWidget(_OverlayLayer old) {
+    super.didUpdateWidget(old);
+    if (old.replayTick != widget.replayTick) {
+      _ctrl?.duration = _durationFor(widget.animStyle);
+      _ctrl
+        ?..value = 0.0
+        ..forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl?.dispose();
+    super.dispose();
+  }
+
+  Duration _durationFor(String style) {
+    switch (style) {
+      case 'fade':
+      case 'slide_up':
+      case 'wipe':
+        return const Duration(milliseconds: 350);
+      case 'pop':
+        return const Duration(milliseconds: 300);
+      case 'typewriter':
+        return const Duration(milliseconds: 800);
+      default:
+        return const Duration(milliseconds: 300);
+    }
+  }
+
+  /// Mirrors `_LiveThumbnailState._applyEntrance`, but scoped to the
+  /// overlay layer — keeps the Fullscreen video preview in sync with the
+  /// inline preview's animation math.
+  Widget _applyEntrance({
+    required Widget child,
+    required double progress,
+    required double fontSize,
+  }) {
+    if (progress >= 1.0) return child;
+    switch (widget.animStyle) {
+      case 'fade':
+        return Opacity(opacity: progress.clamp(0, 1), child: child);
+      case 'slide_up':
+        final dy = (1 - progress) * (fontSize * 4);
+        return Transform.translate(offset: Offset(0, dy), child: child);
+      case 'pop':
+        final s = (0.6 + 0.4 * progress).clamp(0.6, 1.0);
+        return Transform.scale(scale: s, child: child);
+      case 'typewriter':
+      case 'wipe':
+        final dx = (1 - progress) * -300.0;
+        return Transform.translate(offset: Offset(dx, 0), child: child);
+      default:
+        return child;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final badgeData = offerBadge.isNotEmpty
-        ? _badges.where((b) => b.$1 == offerBadge).firstOrNull
-        : null;
-
+    // Adapter locals that let the existing build code continue to work
+    // without being rewritten — they read straight from `widget`.
+    final caption = widget.caption;
+    final priceTag = widget.priceTag;
+    final mrpTag = widget.mrpTag;
+    final offerBadge = widget.offerBadge;
+    final textPosition = widget.textPosition;
+    final badgeSize = widget.badgeSize;
+    final captionStyle = widget.captionStyle;
+    final uppercase = widget.uppercase;
+    final rotationDegrees = widget.rotationDegrees;
     const Map<String, double> sizeFactors = {
       'small': 0.65, 'medium': 1.0, 'large': 1.50,
     };
@@ -2320,49 +2873,28 @@ class _OverlayLayer extends StatelessWidget {
     final hasBadgeOverlay = priceTag.isNotEmpty || mrpTag.isNotEmpty || offerBadge.isNotEmpty;
     final badgeRowH     = badgeFontSize + badgePadV * 2 + 6;
 
+    final style = captionStyle ?? CaptionStyle.defaultStyle;
+    final displayCaption = uppercase ? caption.toUpperCase() : caption;
+    final pos = TextPosition.parse(textPosition);
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Gradient scrim
+        // Caption painted in the active style (pill + effect + font)
+        // with the active entrance animation on top.
         if (caption.isNotEmpty)
-          if (textPosition == 'center')
-            Positioned.fill(
-              child: Align(
-                alignment: Alignment.center,
-                child: Container(height: 120,
-                    color: const Color(0x88000000)),
-              ),
-            )
-          else
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: textPosition == 'top'
-                      ? Alignment.bottomCenter : Alignment.topCenter,
-                  end: textPosition == 'top'
-                      ? Alignment.topCenter : Alignment.bottomCenter,
-                  colors: const [Colors.transparent, Color(0xCC000000)],
-                  stops: const [0.4, 1.0],
-                ),
+          Align(
+            alignment:
+                Alignment(pos.offset.dx * 2 - 1, pos.offset.dy * 2 - 1),
+            child: _applyEntrance(
+              progress: _ctrl?.value ?? 1.0,
+              fontSize: 16,
+              child: Transform.rotate(
+                angle: rotationDegrees * 3.14159265358979 / 180.0,
+                child: _styledCaption(
+                    text: displayCaption, style: style, fontSize: 16),
               ),
             ),
-
-        // Caption
-        if (caption.isNotEmpty)
-          if (textPosition == 'center')
-            Positioned.fill(
-              left: edge, right: edge,
-              child: Center(child: _captionText(caption)),
-            )
-          else
-            Positioned(
-              left: edge, right: edge,
-              top: textPosition == 'top'
-                  ? (hasBadgeOverlay ? edge + badgeRowH + 8 : edge)
-                  : null,
-              bottom: textPosition == 'bottom' ? edge : null,
-              child: _captionText(caption),
-            ),
+          ),
 
         // Price badge
         if (priceTag.isNotEmpty || mrpTag.isNotEmpty)
@@ -2402,43 +2934,83 @@ class _OverlayLayer extends StatelessWidget {
             ),
           ),
 
-        // Offer badge
-        if (badgeData != null)
+        // Offer badge — shared StyledBadge with entrance animation.
+        if (offerBadge.isNotEmpty)
           Positioned(
-            top: edge, left: edge,
-            child: Container(
-              padding: EdgeInsets.symmetric(
-                  horizontal: badgePadH, vertical: badgePadV),
-              decoration: BoxDecoration(
-                color: badgeData.$2,
-                borderRadius: BorderRadius.circular(6),
-                boxShadow: [BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.3), blurRadius: 4)],
+            top: edge,
+            left: edge,
+            child: _applyBadgeEntrance(
+              animStyle: widget.badgeAnimStyle,
+              progress: _ctrl?.value ?? 1.0,
+              child: StyledBadge(
+                style: widget.badgeStyle ?? BadgeStyle.defaultStyle,
+                text: offerBadge.replaceAll(' 🔥', ''),
+                fontSize: badgeFontSize,
               ),
-              child: Text(badgeData.$1,
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: badgeFontSize,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.3)),
             ),
           ),
       ],
     );
   }
 
-  Widget _captionText(String text) => Text(
-        text,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 16,
-          fontWeight: FontWeight.w800,
-          shadows: [Shadow(color: Colors.black, blurRadius: 3)],
+  Widget _applyBadgeEntrance({
+    required Widget child,
+    required String animStyle,
+    required double progress,
+  }) {
+    if (progress >= 1.0) return child;
+    switch (animStyle) {
+      case 'pop':
+        final s = (0.5 + 0.5 * progress).clamp(0.5, 1.0);
+        return Transform.scale(scale: s, child: child);
+      case 'slide_in':
+        final dx = (1 - progress) * -120.0;
+        return Transform.translate(offset: Offset(dx, 0), child: child);
+      case 'rotate_in':
+        final angle = (1 - progress) * 0.7;
+        final s = (0.6 + 0.4 * progress).clamp(0.6, 1.0);
+        return Transform.rotate(
+          angle: -angle,
+          child: Transform.scale(scale: s, child: child),
+        );
+      case 'pulse':
+        final peak = 1 - (progress * 2 - 1).abs();
+        return Transform.scale(
+          scale: (1.0 + 0.2 * peak).clamp(1.0, 1.2),
+          child: child,
+        );
+      default:
+        return child;
+    }
+  }
+
+  Widget _styledCaption({
+    required String text,
+    required CaptionStyle style,
+    required double fontSize,
+  }) {
+    final double padH = fontSize * 0.75;
+    final double padV = fontSize * 0.35;
+    final double radius = fontSize * 0.7;
+    return IntrinsicWidth(
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: padH, vertical: padV),
+        decoration: style.pillColor != null
+            ? BoxDecoration(
+                color: style.pillColor,
+                borderRadius: BorderRadius.circular(radius),
+              )
+            : null,
+        child: Text(
+          text,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: googleFontsStyleFor(style, fontSize: fontSize),
         ),
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        textAlign: TextAlign.center,
-      );
+      ),
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2488,66 +3060,630 @@ class _BadgeChip extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Snap-guide overlay — thin ember lines shown while dragging the caption.
+// Free-form badge text field — the label for the offer badge. Custom text
+// replaces the old fixed chip picker; users can type anything up to 18
+// chars. Stateful so it manages its own controller without us having to
+// plumb a list of TextEditingControllers through the frame card tree.
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _SnapGuideOverlay extends StatelessWidget {
-  const _SnapGuideOverlay({required this.guide});
-  final TextSnapGuide guide;
+class _BadgeTextField extends StatefulWidget {
+  const _BadgeTextField({required this.text, required this.onChanged});
+  final String text;
+  final ValueChanged<String> onChanged;
+
+  @override
+  State<_BadgeTextField> createState() => _BadgeTextFieldState();
+}
+
+class _BadgeTextFieldState extends State<_BadgeTextField> {
+  late TextEditingController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.text);
+  }
+
+  @override
+  void didUpdateWidget(_BadgeTextField old) {
+    super.didUpdateWidget(old);
+    // External (quick-chip) change — sync the controller but preserve
+    // cursor position when the user is typing the same value back.
+    if (widget.text != _ctrl.text) {
+      _ctrl.value = TextEditingValue(
+        text: widget.text,
+        selection: TextSelection.collapsed(offset: widget.text.length),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(painter: _SnapGuidePainter(guide));
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.bgElevated,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: TextField(
+        controller: _ctrl,
+        maxLength: 18,
+        textCapitalization: TextCapitalization.characters,
+        style: AppTextStyles.bodySmall.copyWith(
+            fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 0.3),
+        onChanged: widget.onChanged,
+        decoration: InputDecoration(
+          hintText: 'e.g. SALE · 50% OFF · FREE DELIVERY',
+          hintStyle: AppTextStyles.bodySmall
+              .copyWith(color: AppColors.textDisabled, fontSize: 12),
+          counterStyle: AppTextStyles.labelSmall.copyWith(
+              color: AppColors.textDisabled, fontSize: 10),
+          contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12, vertical: 10),
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+        ),
+      ),
+    );
   }
 }
 
-class _SnapGuidePainter extends CustomPainter {
-  _SnapGuidePainter(this.guide);
-  final TextSnapGuide guide;
+// ─────────────────────────────────────────────────────────────────────────────
+// Quick badge chip — one-tap shortcut to a common label. Tapping writes
+// the label straight into the offer-badge text; tapping an already-
+// selected chip clears it. Style/shape/color live on the separate Badge
+// Style row.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _QuickBadgeChip extends StatelessWidget {
+  const _QuickBadgeChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = AppColors.brandEmber.withValues(alpha: 0.85)
-      ..strokeWidth = 1
-      ..style = PaintingStyle.stroke;
-
-    if (guide.snappedX != null) {
-      final x = size.width * guide.snappedX!;
-      _dashedLine(canvas,
-          Offset(x, 8), Offset(x, size.height - 8), paint, dash: 5, gap: 4);
-    }
-    if (guide.snappedY != null) {
-      final y = size.height * guide.snappedY!;
-      _dashedLine(canvas,
-          Offset(8, y), Offset(size.width - 8, y), paint, dash: 5, gap: 4);
-    }
+  Widget build(BuildContext context) {
+    final fg = selected ? AppColors.brandEmber : AppColors.textSecondary;
+    final bg = selected
+        ? AppColors.brandEmber.withValues(alpha: 0.14)
+        : AppColors.bgElevated;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected ? AppColors.brandEmber : AppColors.divider,
+            width: 1,
+          ),
+        ),
+        child: Text(label,
+            style: AppTextStyles.labelSmall.copyWith(
+              color: fg,
+              fontWeight: FontWeight.w800,
+              fontSize: 11,
+              letterSpacing: 0.3,
+            )),
+      ),
+    );
   }
+}
 
-  void _dashedLine(
-    Canvas canvas,
-    Offset a,
-    Offset b,
-    Paint paint, {
-    required double dash,
-    required double gap,
-  }) {
-    final delta = b - a;
-    final len = delta.distance;
-    final dir = delta / len;
-    double travelled = 0;
-    while (travelled < len) {
-      final start = a + dir * travelled;
-      final end = a + dir * (travelled + dash).clamp(0, len);
-      canvas.drawLine(start, end, paint);
-      travelled += dash + gap;
-    }
-  }
+// ─────────────────────────────────────────────────────────────────────────────
+// Badge style toolbar — live preview chip on the left + four axis
+// launchers on the right (Style / Fill / Text / Motion). Follows the same
+// pattern as `_CaptionStyleToolbar` so users don't have to re-learn a
+// second interaction model.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _BadgeStyleToolbar extends StatelessWidget {
+  const _BadgeStyleToolbar({
+    required this.styleId,
+    required this.resolvedStyle,
+    required this.animStyle,
+    required this.sampleText,
+    required this.onStylePicked,
+    required this.onFillColorPicked,
+    required this.onTextColorPicked,
+    required this.onAnimPicked,
+  });
+
+  final String styleId;
+  final BadgeStyle resolvedStyle;
+  final String animStyle;
+  final String sampleText;
+  final ValueChanged<String> onStylePicked;
+  final ValueChanged<int> onFillColorPicked;
+  final ValueChanged<int> onTextColorPicked;
+  final ValueChanged<String> onAnimPicked;
 
   @override
-  bool shouldRepaint(covariant _SnapGuidePainter old) =>
-      old.guide.snappedX != guide.snappedX ||
-      old.guide.snappedY != guide.snappedY;
+  Widget build(BuildContext context) {
+    final preview = sampleText.isEmpty ? 'SALE' : sampleText;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.bgElevated,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.divider, width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            // Cap the live preview's footprint so starburst/ribbon tiles
+            // don't overflow the toolbar row.
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: StyledBadge(
+                style: resolvedStyle,
+                text: preview.replaceAll(' 🔥', ''),
+                fontSize: 13,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _AxisButton(
+                  icon: Icons.auto_awesome_rounded,
+                  label: 'Style',
+                  onTap: () async {
+                    PrHaptics.tap();
+                    final picked = await showBadgeStyleSheet(
+                      context,
+                      initialStyleId: styleId,
+                      sampleText: preview,
+                    );
+                    if (picked != null) onStylePicked(picked);
+                  },
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: _AxisButton(
+                  icon: Icons.format_color_fill_rounded,
+                  label: 'Fill',
+                  onTap: () async {
+                    PrHaptics.tap();
+                    final picked = await showBadgeColorSheet(
+                      context,
+                      currentStyle: resolvedStyle,
+                      axis: BadgeColorAxis.fill,
+                    );
+                    if (picked != null) onFillColorPicked(picked);
+                  },
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: _AxisButton(
+                  icon: Icons.format_color_text_rounded,
+                  label: 'Text',
+                  onTap: () async {
+                    PrHaptics.tap();
+                    final picked = await showBadgeColorSheet(
+                      context,
+                      currentStyle: resolvedStyle,
+                      axis: BadgeColorAxis.text,
+                    );
+                    if (picked != null) onTextColorPicked(picked);
+                  },
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: _AxisButton(
+                  icon: Icons.animation_rounded,
+                  label: 'Motion',
+                  active: animStyle.isNotEmpty && animStyle != 'none',
+                  onTap: () async {
+                    PrHaptics.tap();
+                    final picked = await showBadgeAnimSheet(
+                      context,
+                      currentAnim: animStyle,
+                    );
+                    if (picked != null) onAnimPicked(picked);
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Caption style toolbar — a compact row of axis launchers (Style / Font /
+// Color / Effect / Aa-uppercase). Each button opens a focused bottom sheet
+// for that one axis; state changes flow through individual callbacks so
+// `_FrameCard` stays dumb. Live preview chip on the left shows the current
+// combined look (preset + overrides + uppercase) so users see edits reflected
+// without tapping into each sheet.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _CaptionStyleToolbar extends StatelessWidget {
+  const _CaptionStyleToolbar({
+    required this.resolvedStyle,
+    required this.styleId,
+    required this.uppercase,
+    required this.rotationDegrees,
+    required this.animStyle,
+    required this.sampleText,
+    required this.onStylePicked,
+    required this.onFontPicked,
+    required this.onTextColorPicked,
+    required this.onPillColorPicked,
+    required this.onEffectPicked,
+    required this.onUppercaseToggled,
+    required this.onMotionPicked,
+    required this.onRotationChanged,
+  });
+
+  final CaptionStyle resolvedStyle;
+  final String styleId;
+  final bool uppercase;
+  final int rotationDegrees;
+  final String animStyle;
+  final String sampleText;
+  final ValueChanged<String> onStylePicked;
+  final ValueChanged<String> onFontPicked;
+  final ValueChanged<int> onTextColorPicked;
+  final ValueChanged<int> onPillColorPicked;
+  final ValueChanged<String> onEffectPicked;
+  final ValueChanged<bool> onUppercaseToggled;
+  final ValueChanged<String> onMotionPicked;
+  final ValueChanged<int> onRotationChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final previewText = sampleText.isEmpty ? 'Aa' : sampleText;
+    final displayText = uppercase ? previewText.toUpperCase() : previewText;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.bgElevated,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.divider, width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Live styled preview of the caption — shrinks to fit. Rotates
+          // with the frame's tilt so users can preview sticker-style poses.
+          Center(
+            child: Transform.rotate(
+              angle: rotationDegrees * 3.14159265358979 / 180.0,
+              child: _LiveStylePreview(
+                style: resolvedStyle,
+                displayText: _chipSample(displayText),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _AxisButton(
+                  icon: Icons.auto_awesome_rounded,
+                  label: 'Style',
+                  onTap: () async {
+                    PrHaptics.tap();
+                    final picked = await showCaptionStyleSheet(
+                      context,
+                      initialStyleId: styleId,
+                      sampleText: sampleText,
+                    );
+                    if (picked != null) onStylePicked(picked);
+                  },
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: _AxisButton(
+                  icon: Icons.text_fields_rounded,
+                  label: 'Font',
+                  onTap: () async {
+                    PrHaptics.tap();
+                    final picked = await showCaptionFontSheet(
+                      context,
+                      currentFamily: resolvedStyle.fontFamily,
+                      sampleText: sampleText,
+                    );
+                    if (picked != null) onFontPicked(picked);
+                  },
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: _AxisButton(
+                  icon: Icons.palette_rounded,
+                  label: 'Color',
+                  onTap: () async {
+                    PrHaptics.tap();
+                    final picked = await showCaptionColorSheet(
+                      context,
+                      currentStyle: resolvedStyle,
+                      hasPill: resolvedStyle.pillColor != null,
+                    );
+                    if (picked == null) return;
+                    if (picked.textColor != null) {
+                      onTextColorPicked(picked.textColor!);
+                    }
+                    if (picked.pillColor != null) {
+                      onPillColorPicked(picked.pillColor!);
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: _AxisButton(
+                  icon: Icons.blur_on_rounded,
+                  label: 'Effect',
+                  onTap: () async {
+                    PrHaptics.tap();
+                    final picked = await showCaptionEffectSheet(
+                      context,
+                      currentStyle: resolvedStyle,
+                    );
+                    if (picked != null) onEffectPicked(picked);
+                  },
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: _AxisButton(
+                  icon: Icons.animation_rounded,
+                  label: 'Motion',
+                  active: animStyle != 'none' || rotationDegrees != 0,
+                  onTap: () async {
+                    PrHaptics.tap();
+                    final result = await showCaptionMotionSheet(
+                      context,
+                      currentAnimStyle: animStyle,
+                      currentRotation: rotationDegrees,
+                    );
+                    if (result == null) return;
+                    if (result.animStyle != null) {
+                      onMotionPicked(result.animStyle!);
+                    }
+                    if (result.rotation != null) {
+                      onRotationChanged(result.rotation!);
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: _AxisButton(
+                  icon: Icons.abc_rounded,
+                  label: 'Aa',
+                  active: uppercase,
+                  onTap: () {
+                    PrHaptics.select();
+                    onUppercaseToggled(!uppercase);
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _chipSample(String s) {
+    final trimmed = s.trim();
+    if (trimmed.isEmpty) return 'Aa';
+    if (trimmed.length <= 20) return trimmed;
+    return '${trimmed.substring(0, 20)}…';
+  }
+}
+
+class _LiveStylePreview extends StatelessWidget {
+  const _LiveStylePreview({required this.style, required this.displayText});
+  final CaptionStyle style;
+  final String displayText;
+
+  @override
+  Widget build(BuildContext context) {
+    const double fontPx = 16;
+    final double padH = fontPx * 0.75;
+    final double padV = fontPx * 0.35;
+    final double radius = fontPx * 0.7;
+    return IntrinsicWidth(
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: padH, vertical: padV),
+        decoration: style.pillColor != null
+            ? BoxDecoration(
+                color: style.pillColor,
+                borderRadius: BorderRadius.circular(radius),
+              )
+            : null,
+        child: Text(
+          displayText,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: googleFontsStyleFor(style, fontSize: fontPx),
+        ),
+      ),
+    );
+  }
+}
+
+class _AxisButton extends StatelessWidget {
+  const _AxisButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.active = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = active ? AppColors.brandEmber : AppColors.textSecondary;
+    final bg = active
+        ? AppColors.brandEmber.withValues(alpha: 0.16)
+        : Colors.transparent;
+    final border = active ? AppColors.brandEmber : AppColors.divider;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: border, width: 1),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 15, color: fg),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                style: AppTextStyles.labelSmall.copyWith(
+                  color: fg,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 10,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Caption position picker — three segmented chips (Top / Middle / Bottom).
+// Writes a legacy preset string into frameTextPositions, which the renderer
+// and preview already know how to handle.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _CaptionPositionPicker extends StatelessWidget {
+  const _CaptionPositionPicker({
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final String selected;
+  final ValueChanged<String> onSelected;
+
+  static const _options = <(String, IconData, String)>[
+    ('top', Icons.vertical_align_top_rounded, 'Top'),
+    ('center', Icons.vertical_align_center_rounded, 'Middle'),
+    ('bottom', Icons.vertical_align_bottom_rounded, 'Bottom'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    // Any `custom:*` legacy value falls back to 'bottom' for display.
+    final current = _options.any((o) => o.$1 == selected) ? selected : 'bottom';
+    return Row(
+      children: [
+        for (var i = 0; i < _options.length; i++) ...[
+          if (i > 0) const SizedBox(width: 8),
+          Expanded(
+            child: _PositionChip(
+              icon: _options[i].$2,
+              label: _options[i].$3,
+              selected: current == _options[i].$1,
+              onTap: () {
+                PrHaptics.select();
+                onSelected(_options[i].$1);
+              },
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _PositionChip extends StatelessWidget {
+  const _PositionChip({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = selected
+        ? AppColors.brandEmber.withValues(alpha: 0.18)
+        : AppColors.bgElevated;
+    final border =
+        selected ? AppColors.brandEmber : AppColors.divider;
+    final fg = selected ? AppColors.brandEmber : AppColors.textSecondary;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: border, width: 1),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 16, color: fg),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: AppTextStyles.labelSmall.copyWith(
+                  color: fg,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
