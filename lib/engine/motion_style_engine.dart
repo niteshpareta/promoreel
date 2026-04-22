@@ -49,6 +49,8 @@ enum _Motion {
 
 class MotionStyleEngine {
   static const Map<MotionStyleId, _StyleSpec> _specs = {
+    // "None" = no camera motion + short neutral fade. Default preset.
+    MotionStyleId.none:                 _StyleSpec('fade',       0.25, _Motion.none),
     MotionStyleId.slowZoom:             _StyleSpec('fade',       0.60, _Motion.zoomInStandard),
     MotionStyleId.kenBurnsPan:          _StyleSpec('fade',       0.50, _Motion.kenBurnsPan),
     MotionStyleId.softCrossfade:        _StyleSpec('dissolve',   0.80, _Motion.none),
@@ -250,8 +252,14 @@ class MotionStyleEngine {
     for (int i = 0; i < n; i++) {
       final bool preComposed = preComposedFlags != null &&
           i < preComposedFlags.length && preComposedFlags[i];
-      final String motion =
-          _motionFilter(spec.motion, i, frameDurations[i], outW, outH);
+      // Camera motion (zoom / pan / pulse) is designed for stills — it
+      // adds life to a photo. Layering it on video content creates a
+      // disorienting "double motion" effect, so videos always bypass the
+      // motion filter and play as-is. Transitions between slides still
+      // apply normally.
+      final String motion = isVideo[i]
+          ? ''
+          : _motionFilter(spec.motion, i, frameDurations[i], outW, outH);
 
       if (preComposed) {
         buf.write('[$i:v]fps=30$motion,format=yuv420p[v$i]; ');

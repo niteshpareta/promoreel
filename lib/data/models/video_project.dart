@@ -23,7 +23,7 @@ class VideoProject {
   const VideoProject({
     required this.id,
     required this.assetPaths,
-    this.motionStyleId       = MotionStyleId.slowZoom,
+    this.motionStyleId       = MotionStyleId.none,
     this.frameCaptions       = const [],
     this.framePriceTags      = const [],
     this.frameMrpTags        = const [],

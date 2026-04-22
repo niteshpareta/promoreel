@@ -1,6 +1,11 @@
 enum MotionStyleFamily { subtle, energetic, informational }
 
 enum MotionStyleId {
+  /// No camera motion, short neutral fade between slides. Default for new
+  /// projects — users opt in to flashier looks instead of getting one by
+  /// surprise. Applies to stills; videos always bypass camera motion
+  /// regardless of the selected style.
+  none,
   slowZoom,
   kenBurnsPan,
   softCrossfade,
@@ -35,6 +40,9 @@ class MotionStyle {
   final String previewThumbnail;
 
   static const all = [
+    // Default — no camera motion, short neutral fade. Always free.
+    MotionStyle(id: MotionStyleId.none, family: MotionStyleFamily.subtle, nameEn: 'None', nameHi: 'कोई नहीं', isPro: false, lottieAsset: '', previewThumbnail: ''),
+
     // Subtle family — free: first 2, pro: last 2
     MotionStyle(id: MotionStyleId.slowZoom, family: MotionStyleFamily.subtle, nameEn: 'Slow Zoom', nameHi: 'धीमा ज़ूम', isPro: false, lottieAsset: 'assets/motion_styles/slow_zoom.json', previewThumbnail: 'assets/motion_styles/previews/slow_zoom.webp'),
     MotionStyle(id: MotionStyleId.kenBurnsPan, family: MotionStyleFamily.subtle, nameEn: 'Ken Burns', nameHi: 'केन बर्न्स', isPro: false, lottieAsset: 'assets/motion_styles/ken_burns.json', previewThumbnail: 'assets/motion_styles/previews/ken_burns.webp'),

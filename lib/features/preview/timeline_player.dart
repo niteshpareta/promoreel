@@ -389,9 +389,18 @@ class _TimelinePlayerState extends State<TimelinePlayer>
     final tLocal = (t - _slideStart[i]).clamp(0.0, _slideDur[i]);
     final p = (tLocal / _slideDur[i]).clamp(0.0, 1.0);
 
+    // Camera motion only applies to stills — videos already have their
+    // own motion and stacking our zoom/pan on top looks disorienting.
+    final path = widget.project.assetPaths.isEmpty
+        ? ''
+        : widget.project.assetPaths[i.clamp(0, widget.project.assetPaths.length - 1)];
+    final isVideo = _isVideoPath(path);
+    final effectiveCamera =
+        isVideo ? _CameraMotion.none : _camera;
+
     double scale = 1.0;
     double dx = 0.0;
-    switch (_camera) {
+    switch (effectiveCamera) {
       case _CameraMotion.none:
         break;
       case _CameraMotion.zoomInStandard:
@@ -924,6 +933,8 @@ enum _CameraMotion {
 
 _StyleSpec _lookupStyleSpec(MotionStyleId id) {
   switch (id) {
+    case MotionStyleId.none:
+      return const _StyleSpec('fade', 0.25, _CameraMotion.none);
     case MotionStyleId.slowZoom:
       return const _StyleSpec('fade', 0.60, _CameraMotion.zoomInStandard);
     case MotionStyleId.kenBurnsPan:

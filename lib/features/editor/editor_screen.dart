@@ -1423,6 +1423,8 @@ class _MotionStylePicker extends ConsumerWidget {
   /// horizontal pan, dissolve, slide-in direction, pulse, wipe, etc.
   /// Keeps each of the 12 styles visually distinct in the picker strip.
   IconData _styleIcon(MotionStyleId id) => switch (id) {
+        // Default — no motion
+        MotionStyleId.none => Icons.do_disturb_on_rounded,
         // Subtle family
         MotionStyleId.slowZoom => Icons.zoom_in_rounded,
         MotionStyleId.kenBurnsPan => Icons.swap_horiz_rounded,
