@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
+import '../../core/router/safe_pop.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../data/models/branding_preset.dart';
@@ -137,7 +138,7 @@ class _BrandingScreenState extends ConsumerState<BrandingScreen> {
         title: const Text('Branding Setup'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.pop(),
+          onPressed: () => safePop(context),
         ),
         actions: [
           _saving

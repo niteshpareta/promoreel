@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+
+import '../../core/router/safe_pop.dart';
 import 'package:video_player/video_player.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
@@ -81,7 +83,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   children: [
                     IconButton(
                       icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-                      onPressed: () => context.pop(),
+                      onPressed: () => safePop(context),
                     ),
                     Text('Preview', style: AppTextStyles.titleLarge),
                   ],
@@ -117,7 +119,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 children: [
                   IconButton(
                     icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-                    onPressed: () => context.pop(),
+                    onPressed: () => safePop(context),
                   ),
                   Text('Preview', style: AppTextStyles.titleLarge),
                   const Spacer(),

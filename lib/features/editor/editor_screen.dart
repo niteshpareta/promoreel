@@ -9,6 +9,7 @@ import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../core/router/app_router.dart';
+import '../../core/router/safe_pop.dart';
 import '../../core/ui/haptics.dart';
 import '../../core/ui/pr_button.dart';
 import '../../core/ui/pr_icons.dart';
@@ -47,7 +48,18 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
 
     final branding = ref.watch(brandingProvider);
 
-    return Scaffold(
+    return PopScope(
+      // Take over the hardware back / swipe-back gesture so it uses the
+      // same "pop if possible, else go Home" fallback as the app-bar
+      // button. Otherwise a route with no back stack (common — editor is
+      // reached via `context.go` and `pushReplacement`) would just dead-
+      // end on back.
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        safePop(context);
+      },
+      child: Scaffold(
       backgroundColor: AppColors.bgDark,
       resizeToAvoidBottomInset: true,
       body: SafeArea(
@@ -121,6 +133,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
           ],
         ),
       ),
+    ),
     );
   }
 
@@ -188,7 +201,7 @@ class _EditorAppBar extends ConsumerWidget {
           children: [
             IconButton(
               icon: const Icon(PrIcons.back),
-              onPressed: () => context.pop(),
+              onPressed: () => safePop(context),
             ),
             Expanded(
               child: Column(

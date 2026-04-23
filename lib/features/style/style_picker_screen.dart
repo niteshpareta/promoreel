@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/router/app_router.dart';
+import '../../core/router/safe_pop.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../core/ui/haptics.dart';
@@ -47,7 +48,7 @@ class StylePickerScreen extends ConsumerWidget {
               child: PrButton(
                 label: 'Use ${selectedStyle.nameEn}',
                 icon: PrIcons.check,
-                onPressed: () => context.pop(),
+                onPressed: () => safePop(context),
               ),
             ),
           ],
@@ -71,7 +72,7 @@ class _TopBar extends StatelessWidget {
         children: [
           IconButton(
             icon: const Icon(PrIcons.back),
-            onPressed: () => context.pop(),
+            onPressed: () => safePop(context),
           ),
           Expanded(
             child: PrSectionHeader(

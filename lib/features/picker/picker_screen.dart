@@ -11,6 +11,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/router/app_router.dart';
+import '../../core/router/safe_pop.dart';
 import '../../data/services/gallery_service.dart';
 import '../../providers/project_provider.dart';
 
@@ -217,7 +218,7 @@ class _PickerScreenState extends ConsumerState<PickerScreen>
         ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.pop(),
+          onPressed: () => safePop(context),
         ),
         actions: [
           if (_selected.isNotEmpty)
