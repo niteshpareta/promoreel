@@ -93,7 +93,7 @@ class _Grid extends StatelessWidget {
     required this.ref,
   });
   final MotionStyleId selected;
-  final SubscriptionTier tier;
+  final SubscriptionState tier;
   final WidgetRef ref;
 
   @override

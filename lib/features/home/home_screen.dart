@@ -80,7 +80,7 @@ class _HomeBody extends StatelessWidget {
     required this.orphans,
   });
 
-  final SubscriptionTier tier;
+  final SubscriptionState tier;
   final List<VideoRecord> videos;
   final int todayCount;
   final List<DraftRecord> drafts;
@@ -228,7 +228,7 @@ class _Hero extends StatelessWidget {
     required this.recentFirst,
   });
 
-  final SubscriptionTier tier;
+  final SubscriptionState tier;
   final int todayCount;
 
   /// First few recent videos — rendered as a peekaboo filmstrip on the right
