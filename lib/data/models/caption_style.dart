@@ -184,10 +184,29 @@ class CaptionFontOption {
 }
 
 const List<CaptionFontOption> kCaptionFontOptions = [
+  // Original six — the core caption-style presets reference these by name.
   CaptionFontOption('Manrope', 'Manrope'),
   CaptionFontOption('Fraunces', 'Fraunces'),
   CaptionFontOption('Bebas Neue', 'Bebas'),
   CaptionFontOption('Playfair Display', 'Playfair'),
   CaptionFontOption('Oswald', 'Oswald'),
   CaptionFontOption('Caveat', 'Caveat'),
+
+  // Expansion set — all SIL OFL licensed, served through google_fonts at
+  // runtime. Grouped by vibe so the picker tells a coherent story.
+  // Bold display — Sale / Offer headlines
+  CaptionFontOption('Anton', 'Anton'),
+  CaptionFontOption('Alfa Slab One', 'Alfa Slab'),
+  CaptionFontOption('Abril Fatface', 'Abril'),
+  // Script / handwritten — wedding, boutique, festive
+  CaptionFontOption('Dancing Script', 'Dancing'),
+  CaptionFontOption('Pacifico', 'Pacifico'),
+  CaptionFontOption('Lobster', 'Lobster'),
+  // Casual / retail — food, kids, everyday
+  CaptionFontOption('Righteous', 'Righteous'),
+  CaptionFontOption('Fredoka', 'Fredoka'),
+  // Modern sans — tech, D2C, clean
+  CaptionFontOption('DM Sans', 'DM Sans'),
+  // Serif body — premium, jewellery, real-estate
+  CaptionFontOption('Lora', 'Lora'),
 ];
