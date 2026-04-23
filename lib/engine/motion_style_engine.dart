@@ -63,6 +63,33 @@ class MotionStyleEngine {
     MotionStyleId.bottomThirdHighlight: _StyleSpec('fade',       0.60, _Motion.zoomInSubtle),
     MotionStyleId.progressiveReveal:    _StyleSpec('wipeleft',   0.70, _Motion.none),
     MotionStyleId.captionStack:         _StyleSpec('slideleft',  0.50, _Motion.none),
+
+    // ── Expansion pack (20 extra xfade transitions) ─────────────────────
+    // Subtle — calmer, no camera motion.
+    MotionStyleId.wipeUp:               _StyleSpec('wipeup',      0.50, _Motion.none),
+    MotionStyleId.wipeDown:             _StyleSpec('wipedown',    0.50, _Motion.none),
+    MotionStyleId.smoothLeft:           _StyleSpec('smoothleft',  0.60, _Motion.none),
+    MotionStyleId.smoothRight:          _StyleSpec('smoothright', 0.60, _Motion.none),
+
+    // Energetic
+    MotionStyleId.circleClose:          _StyleSpec('circleclose', 0.50, _Motion.none),
+    MotionStyleId.fadeBlack:            _StyleSpec('fadeblack',   0.45, _Motion.none),
+    MotionStyleId.fadeGrays:            _StyleSpec('fadegrays',   0.60, _Motion.none),
+    MotionStyleId.pixelize:             _StyleSpec('pixelize',    0.50, _Motion.none),
+    MotionStyleId.hBlur:                _StyleSpec('hblur',       0.45, _Motion.none),
+    MotionStyleId.rectCrop:             _StyleSpec('rectcrop',    0.55, _Motion.none),
+
+    // Informational — geometric / directional
+    MotionStyleId.wipeTL:               _StyleSpec('wipetl',      0.50, _Motion.none),
+    MotionStyleId.wipeTR:               _StyleSpec('wipetr',      0.50, _Motion.none),
+    MotionStyleId.wipeBL:               _StyleSpec('wipebl',      0.50, _Motion.none),
+    MotionStyleId.wipeBR:               _StyleSpec('wipebr',      0.50, _Motion.none),
+    MotionStyleId.coverLeft:            _StyleSpec('coverleft',   0.50, _Motion.none),
+    MotionStyleId.coverRight:           _StyleSpec('coverright',  0.50, _Motion.none),
+    MotionStyleId.coverUp:              _StyleSpec('coverup',     0.50, _Motion.none),
+    MotionStyleId.coverDown:            _StyleSpec('coverdown',   0.50, _Motion.none),
+    MotionStyleId.revealLeft:           _StyleSpec('revealleft',  0.50, _Motion.none),
+    MotionStyleId.revealRight:          _StyleSpec('revealright', 0.50, _Motion.none),
   };
 
   /// Build the motion filter chain (including leading comma) for a slide.
@@ -167,6 +194,12 @@ class MotionStyleEngine {
     List<String?> frameVoiceovers = const [],
     required int totalDuration,
     required MotionStyleId styleId,
+    // Two-axis picker — overrides [styleId]'s bundled transition / camera
+    // when non-null. New code paths pass these; legacy callers that still
+    // pass `styleId` alone get the decomposed (transition, camera) via
+    // the `_specs` table fallback below.
+    String? transitionId,
+    String? cameraMotionId,
     required List<double> frameDurations,
     // When true for an index, the image is already composited to outW×outH by Flutter.
     // FFmpeg only needs fps+format — no split/blur/scale/overlay.
@@ -181,7 +214,11 @@ class MotionStyleEngine {
     assert(inputPaths.length == isVideo.length);
     assert(inputPaths.length == frameDurations.length);
 
-    final spec = _specs[styleId] ?? const _StyleSpec('fade', 0.5, _Motion.none);
+    final spec = _resolveSpec(
+      styleId: styleId,
+      transitionId: transitionId,
+      cameraMotionId: cameraMotionId,
+    );
     final int n = inputPaths.length;
 
     final double minDur = frameDurations.reduce((a, b) => a < b ? a : b);
@@ -447,6 +484,73 @@ class MotionStyleEngine {
     buf.write('"$outputPath"');
 
     return buf.toString();
+  }
+
+  /// Build a `_StyleSpec` from whichever inputs the caller provided. If
+  /// the new two-axis fields (`transitionId` + `cameraMotionId`) are
+  /// present they take precedence; otherwise we decompose the legacy
+  /// [styleId] via the `_specs` table. Duration is picked per-transition
+  /// so e.g. `dissolve` gets its longer default while `fadewhite` stays
+  /// short.
+  static _StyleSpec _resolveSpec({
+    required MotionStyleId styleId,
+    String? transitionId,
+    String? cameraMotionId,
+  }) {
+    // Both new-axis fields present → construct directly, no _specs lookup.
+    if (transitionId != null && cameraMotionId != null) {
+      return _StyleSpec(
+        transitionId,
+        _defaultTransitionDuration(transitionId),
+        _cameraFromId(cameraMotionId),
+      );
+    }
+    return _specs[styleId] ?? const _StyleSpec('fade', 0.5, _Motion.none);
+  }
+
+  /// Sensible default `xfade duration` for each transition. Chosen to
+  /// match the old `_specs` table entries where they existed.
+  static double _defaultTransitionDuration(String id) {
+    switch (id) {
+      case 'fade':
+      case 'fadefast':
+        return 0.50;
+      case 'dissolve':
+        return 0.60;
+      case 'fadewhite':
+        return 0.30;
+      case 'fadeblack':
+        return 0.45;
+      case 'smoothleft':
+      case 'smoothright':
+        return 0.60;
+      case 'hblur':
+        return 0.45;
+      case 'rectcrop':
+        return 0.55;
+      case 'fadegrays':
+        return 0.60;
+      default:
+        return 0.50;
+    }
+  }
+
+  static _Motion _cameraFromId(String id) {
+    switch (id) {
+      case 'slowZoom':
+        return _Motion.zoomInStandard;
+      case 'zoomInSubtle':
+        return _Motion.zoomInSubtle;
+      case 'kenBurnsPan':
+        return _Motion.kenBurnsPan;
+      case 'quickPulse':
+        return _Motion.quickPulse;
+      case 'popPulse':
+        return _Motion.popPulse;
+      case 'none':
+      default:
+        return _Motion.none;
+    }
   }
 }
 

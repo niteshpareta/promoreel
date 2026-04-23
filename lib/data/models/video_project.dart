@@ -1,5 +1,6 @@
 import 'badge_style.dart';
 import 'caption_style.dart';
+import 'motion_axes.dart';
 import 'motion_style.dart';
 import 'export_format.dart';
 
@@ -24,6 +25,8 @@ class VideoProject {
     required this.id,
     required this.assetPaths,
     this.motionStyleId       = MotionStyleId.none,
+    this.transitionId        = kDefaultTransitionId,
+    this.cameraMotionId      = kDefaultCameraMotionId,
     this.frameCaptions       = const [],
     this.framePriceTags      = const [],
     this.frameMrpTags        = const [],
@@ -96,6 +99,8 @@ class VideoProject {
         'id': id,
         'assetPaths':         assetPaths,
         'motionStyleId':      motionStyleId.name,
+        'transitionId':       transitionId,
+        'cameraMotionId':     cameraMotionId,
         'frameCaptions':      frameCaptions,
         'framePriceTags':     framePriceTags,
         'frameMrpTags':       frameMrpTags,
@@ -136,12 +141,25 @@ class VideoProject {
     List<int> intList(String key) =>
         (j[key] as List?)?.map((e) => (e as num).toInt()).toList() ?? [];
 
+    final savedMotionStyle = MotionStyleId.values.firstWhere(
+        (e) => e.name == j['motionStyleId'],
+        orElse: () => MotionStyleId.slowZoom);
+    // If the draft is from before the two-axis split it won't have
+    // `transitionId` / `cameraMotionId`. Decompose the legacy preset so
+    // old drafts render identically.
+    final savedTransitionId = j['transitionId'] as String?;
+    final savedCameraId = j['cameraMotionId'] as String?;
+    final (migTransition, migCamera) =
+        decomposeMotionStyleId(savedMotionStyle);
+    final resolvedTransitionId = savedTransitionId ?? migTransition;
+    final resolvedCameraId = savedCameraId ?? migCamera;
+
     return VideoProject(
       id:                 j['id'] as String,
       assetPaths:         strList('assetPaths'),
-      motionStyleId:      MotionStyleId.values.firstWhere(
-          (e) => e.name == j['motionStyleId'],
-          orElse: () => MotionStyleId.slowZoom),
+      motionStyleId:      savedMotionStyle,
+      transitionId:       resolvedTransitionId,
+      cameraMotionId:     resolvedCameraId,
       frameCaptions:      strList('frameCaptions'),
       framePriceTags:     strList('framePriceTags'),
       frameMrpTags:       strList('frameMrpTags'),
@@ -189,7 +207,18 @@ class VideoProject {
 
   final String id;
   final List<String> assetPaths;
+  /// Legacy preset — kept for back-compat when loading older drafts.
+  /// New code paths should use `transitionId` + `cameraMotionId` instead.
   final MotionStyleId motionStyleId;
+
+  /// FFmpeg xfade transition name — `'fade'` / `'wipeleft'` /
+  /// `'circleopen'` / etc. See `lib/data/models/motion_axes.dart` for
+  /// the full set.
+  final String transitionId;
+
+  /// Camera motion identifier — `'none'` / `'slowZoom'` /
+  /// `'kenBurnsPan'` / `'zoomInSubtle'` / `'quickPulse'` / `'popPulse'`.
+  final String cameraMotionId;
 
   final List<String> frameCaptions;
   final List<String> framePriceTags;
@@ -273,6 +302,8 @@ class VideoProject {
   VideoProject copyWith({
     List<String>?   assetPaths,
     MotionStyleId?  motionStyleId,
+    String?         transitionId,
+    String?         cameraMotionId,
     List<String>?   frameCaptions,
     List<String>?   framePriceTags,
     List<String>?   frameMrpTags,
@@ -308,6 +339,8 @@ class VideoProject {
         id: id,
         assetPaths:         assetPaths         ?? this.assetPaths,
         motionStyleId:      motionStyleId      ?? this.motionStyleId,
+        transitionId:       transitionId       ?? this.transitionId,
+        cameraMotionId:     cameraMotionId     ?? this.cameraMotionId,
         frameCaptions:      frameCaptions      ?? this.frameCaptions,
         framePriceTags:     framePriceTags     ?? this.framePriceTags,
         frameMrpTags:       frameMrpTags       ?? this.frameMrpTags,
@@ -349,6 +382,8 @@ static const _sentinel = Object();
         id: id,
         assetPaths:         assetPaths,
         motionStyleId:      motionStyleId,
+        transitionId:       transitionId,
+        cameraMotionId:     cameraMotionId,
         frameCaptions:      frameCaptions,
         framePriceTags:     framePriceTags,
         frameMrpTags:       frameMrpTags,
@@ -618,6 +653,8 @@ static const _sentinel = Object();
     id: id,
     assetPaths:         assetPaths,
     motionStyleId:      motionStyleId,
+    transitionId:       transitionId,
+    cameraMotionId:     cameraMotionId,
     frameCaptions:      frameCaptions,
     framePriceTags:     framePriceTags,
     frameMrpTags:       frameMrpTags,

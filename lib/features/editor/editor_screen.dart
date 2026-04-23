@@ -16,6 +16,7 @@ import '../../core/ui/tokens.dart';
 import '../../data/models/branding_preset.dart';
 import '../../data/models/caption_style.dart';
 import '../../data/models/export_format.dart';
+import '../../data/models/motion_axes.dart';
 import '../../data/models/motion_style.dart';
 import '../../data/models/video_project.dart';
 import '../../engine/text_renderer.dart' show googleFontsStyleFor;
@@ -102,11 +103,19 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
                   ref.read(projectProvider.notifier).setExportFormat(f),
             ),
 
-            // Motion style picker
-            _MotionStylePicker(
-              selected: project.motionStyleId,
-              onSelect: (id) =>
-                  ref.read(projectProvider.notifier).setMotionStyle(id),
+            // Two-axis motion picker — slide Transition and per-slide
+            // Camera Motion live on separate axes now. Tile strip
+            // switches based on which axis pill is active; both
+            // selections are shown in the header pills.
+            _MotionAxesPicker(
+              transitionId: project.transitionId,
+              cameraMotionId: project.cameraMotionId,
+              onTransitionSelected: (id) => ref
+                  .read(projectProvider.notifier)
+                  .setTransition(id),
+              onCameraSelected: (id) => ref
+                  .read(projectProvider.notifier)
+                  .setCameraMotion(id),
             ),
             const SizedBox(height: 6),
           ],
@@ -1335,111 +1344,296 @@ class _PickSlot extends StatelessWidget {
   }
 }
 
-// ── Motion style picker ───────────────────────────────────────────────────────
+// ── Two-axis motion picker ────────────────────────────────────────────────────
+//
+// A single horizontal strip with two header pills on top — "Transition"
+// and "Camera". The active pill decides which tiles the strip shows. Both
+// selections are persisted on `VideoProject` as independent fields
+// (`transitionId`, `cameraMotionId`), so users can freely mix, say,
+// "Wipe Left" with "Slow Zoom" — combos that the old fixed-preset list
+// never exposed.
 
-class _MotionStylePicker extends ConsumerWidget {
-  const _MotionStylePicker(
-      {required this.selected, required this.onSelect});
-  final MotionStyleId selected;
-  final void Function(MotionStyleId) onSelect;
+enum _MotionAxis { transition, camera }
+
+class _MotionAxesPicker extends StatefulWidget {
+  const _MotionAxesPicker({
+    required this.transitionId,
+    required this.cameraMotionId,
+    required this.onTransitionSelected,
+    required this.onCameraSelected,
+  });
+
+  final String transitionId;
+  final String cameraMotionId;
+  final ValueChanged<String> onTransitionSelected;
+  final ValueChanged<String> onCameraSelected;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  State<_MotionAxesPicker> createState() => _MotionAxesPickerState();
+}
+
+class _MotionAxesPickerState extends State<_MotionAxesPicker> {
+  _MotionAxis _axis = _MotionAxis.transition;
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedTransition = transitionById(widget.transitionId);
+    final selectedCamera = cameraById(widget.cameraMotionId);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Header: two tappable pills. Each pill shows its axis's
+        // currently-selected label; the active pill is ember-tinted.
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-          child: Text('Motion Style',
-              style: AppTextStyles.titleSmall
-                  .copyWith(color: AppColors.textSecondary)),
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
+          child: Row(
+            children: [
+              Expanded(
+                child: _AxisPill(
+                  label: 'Transition',
+                  value: selectedTransition.label,
+                  active: _axis == _MotionAxis.transition,
+                  onTap: () =>
+                      setState(() => _axis = _MotionAxis.transition),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _AxisPill(
+                  label: 'Camera',
+                  value: selectedCamera.label,
+                  active: _axis == _MotionAxis.camera,
+                  onTap: () => setState(() => _axis = _MotionAxis.camera),
+                ),
+              ),
+            ],
+          ),
         ),
         SizedBox(
-          height: 84,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-            itemCount: MotionStyle.all.length,
-            separatorBuilder: (ctx, i) => const SizedBox(width: 8),
-            itemBuilder: (ctx, i) {
-              final style = MotionStyle.all[i];
-              final isSelected = style.id == selected;
-              return GestureDetector(
-                onTap: () => onSelect(style.id),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  width: 70,
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? AppColors.primaryContainer
-                        : AppColors.bgSurface,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: isSelected
-                          ? AppColors.primary
-                          : AppColors.divider,
-                      width: isSelected ? 2 : 1,
-                    ),
-                  ),
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(_styleIcon(style.id),
-                            color: isSelected
-                                ? AppColors.primary
-                                : AppColors.textSecondary,
-                            size: 22),
-                        const SizedBox(height: 4),
-                        Padding(
-                          padding:
-                              const EdgeInsets.symmetric(horizontal: 4),
-                          child: Text(
-                            style.nameEn,
-                            style: AppTextStyles.labelSmall.copyWith(
-                              fontSize: 9,
-                              color: isSelected
-                                  ? AppColors.primary
-                                  : AppColors.textSecondary,
-                            ),
-                            textAlign: TextAlign.center,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+          height: 128,
+          child: _axis == _MotionAxis.transition
+              ? _TransitionStrip(
+                  selectedId: widget.transitionId,
+                  onSelect: widget.onTransitionSelected,
+                )
+              : _CameraStrip(
+                  selectedId: widget.cameraMotionId,
+                  onSelect: widget.onCameraSelected,
                 ),
-              );
-            },
-          ),
         ),
       ],
     );
   }
+}
 
-  /// Per-style glyph hinting at what the motion actually does — zoom,
-  /// horizontal pan, dissolve, slide-in direction, pulse, wipe, etc.
-  /// Keeps each of the 12 styles visually distinct in the picker strip.
-  IconData _styleIcon(MotionStyleId id) => switch (id) {
-        // Default — no motion
-        MotionStyleId.none => Icons.do_disturb_on_rounded,
-        // Subtle family
-        MotionStyleId.slowZoom => Icons.zoom_in_rounded,
-        MotionStyleId.kenBurnsPan => Icons.swap_horiz_rounded,
-        MotionStyleId.softCrossfade => Icons.blur_on_rounded,
-        MotionStyleId.elegantSlide => Icons.north_rounded,
-        // Energetic family
-        MotionStyleId.quickCutBeatSync => Icons.graphic_eq_rounded,
-        MotionStyleId.boldSlide => Icons.east_rounded,
-        MotionStyleId.flashReveal => Icons.flash_on_rounded,
-        MotionStyleId.gridPop => Icons.adjust_rounded,
-        // Informational family
-        MotionStyleId.splitScreenInfo => Icons.south_rounded,
-        MotionStyleId.bottomThirdHighlight => Icons.subtitles_rounded,
-        MotionStyleId.progressiveReveal =>
-          Icons.keyboard_double_arrow_left_rounded,
-        MotionStyleId.captionStack => Icons.list_alt_rounded,
-      };
+class _AxisPill extends StatelessWidget {
+  const _AxisPill({
+    required this.label,
+    required this.value,
+    required this.active,
+    required this.onTap,
+  });
+
+  final String label;
+  final String value;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = active
+        ? AppColors.primary.withValues(alpha: 0.14)
+        : AppColors.bgSurface;
+    final border = active ? AppColors.primary : AppColors.divider;
+    final labelColor =
+        active ? AppColors.primary : AppColors.textSecondary;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+                color: border, width: active ? 1.3 : 0.8),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label.toUpperCase(),
+                style: AppTextStyles.labelSmall.copyWith(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.8,
+                  color: labelColor.withValues(alpha: 0.75),
+                ),
+              ),
+              const SizedBox(height: 1),
+              Text(
+                value,
+                style: AppTextStyles.labelMedium.copyWith(
+                  color: labelColor,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TransitionStrip extends StatelessWidget {
+  const _TransitionStrip({
+    required this.selectedId,
+    required this.onSelect,
+  });
+
+  final String selectedId;
+  final ValueChanged<String> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      itemCount: kTransitions.length,
+      separatorBuilder: (_, __) => const SizedBox(width: 8),
+      itemBuilder: (ctx, i) {
+        final opt = kTransitions[i];
+        return _StripTile(
+          label: opt.label,
+          previewAsset: opt.previewAsset,
+          fallbackIcon: opt.icon,
+          selected: opt.id == selectedId,
+          onTap: () => onSelect(opt.id),
+        );
+      },
+    );
+  }
+}
+
+class _CameraStrip extends StatelessWidget {
+  const _CameraStrip({
+    required this.selectedId,
+    required this.onSelect,
+  });
+
+  final String selectedId;
+  final ValueChanged<String> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      itemCount: kCameras.length,
+      separatorBuilder: (_, __) => const SizedBox(width: 8),
+      itemBuilder: (ctx, i) {
+        final opt = kCameras[i];
+        return _StripTile(
+          label: opt.label,
+          previewAsset: opt.previewAsset,
+          fallbackIcon: opt.icon,
+          selected: opt.id == selectedId,
+          onTap: () => onSelect(opt.id),
+        );
+      },
+    );
+  }
+}
+
+/// Individual strip tile — animated WebP preview + label, with
+/// `errorBuilder` fallback to a static icon if the asset is missing
+/// (important for options added before the next bake).
+class _StripTile extends StatelessWidget {
+  const _StripTile({
+    required this.label,
+    required this.previewAsset,
+    required this.fallbackIcon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final String previewAsset;
+  final IconData fallbackIcon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        width: 64,
+        decoration: BoxDecoration(
+          color:
+              selected ? AppColors.primaryContainer : AppColors.bgSurface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? AppColors.primary : AppColors.divider,
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(4),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: AspectRatio(
+                  aspectRatio: 9 / 16,
+                  child: Image.asset(
+                    previewAsset,
+                    fit: BoxFit.cover,
+                    gaplessPlayback: true,
+                    errorBuilder: (_, __, ___) => Container(
+                      color: AppColors.bgSurfaceVariant,
+                      alignment: Alignment.center,
+                      child: Icon(
+                        fallbackIcon,
+                        color: selected
+                            ? AppColors.primary
+                            : AppColors.textSecondary,
+                        size: 22,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: AppTextStyles.labelSmall.copyWith(
+                  fontSize: 9,
+                  color: selected
+                      ? AppColors.primary
+                      : AppColors.textSecondary,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

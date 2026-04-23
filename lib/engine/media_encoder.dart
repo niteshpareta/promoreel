@@ -735,6 +735,8 @@ class MediaEncoder {
         frameVoiceovers:   frameVoiceovers,
         totalDuration:     totalDuration,
         styleId:           project.motionStyleId,
+        transitionId:      project.transitionId,
+        cameraMotionId:    project.cameraMotionId,
         frameDurations:    resolvedDurations,
         preComposedFlags:  preComposedFlags,
         watermarkPath:     watermarkPngPath,

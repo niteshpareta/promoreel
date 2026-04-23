@@ -21,6 +21,19 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
     state = state!.copyWith(motionStyleId: id);
   }
 
+  /// Set just the slide-to-slide transition (one axis of the new
+  /// two-axis picker). Leaves camera motion unchanged.
+  void setTransition(String transitionId) {
+    if (state == null) return;
+    state = state!.copyWith(transitionId: transitionId);
+  }
+
+  /// Set just the per-slide camera motion. Leaves transition unchanged.
+  void setCameraMotion(String cameraMotionId) {
+    if (state == null) return;
+    state = state!.copyWith(cameraMotionId: cameraMotionId);
+  }
+
   void setExportFormat(ExportFormat format) {
     if (state == null) return;
     state = state!.copyWith(exportFormat: format);

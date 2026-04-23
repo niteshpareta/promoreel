@@ -692,6 +692,149 @@ class _TimelinePlayerState extends State<TimelinePlayer>
           clipper: _WipeLeftClipper(progress),
           child: child,
         );
+
+      // ── Expansion-pack transitions ───────────────────────────────────
+      //
+      // Preview approximations only. The export path runs the real xfade
+      // filter name (see `_lookupStyleSpec`), so visuals on the exported
+      // MP4 will always be the authoritative version. Where a Flutter
+      // widget can't cheaply match FFmpeg's effect (pixelize / hblur),
+      // we fall back to fade in preview with a note in the code.
+      case 'wipeup':
+        if (!incoming) return Opacity(opacity: 1 - progress, child: child);
+        return ClipRect(
+            clipper: _WipeEdgeClipper(progress, _WipeEdge.bottom),
+            child: child);
+      case 'wipedown':
+        if (!incoming) return Opacity(opacity: 1 - progress, child: child);
+        return ClipRect(
+            clipper: _WipeEdgeClipper(progress, _WipeEdge.top),
+            child: child);
+      case 'wipetl':
+      case 'wipetr':
+      case 'wipebl':
+      case 'wipebr':
+        if (!incoming) return Opacity(opacity: 1 - progress, child: child);
+        return ClipPath(
+            clipper: _DiagonalWipeClipper(progress, transId),
+            child: child);
+      case 'circleclose':
+        if (!incoming) {
+          // Outgoing shrinks inside a closing circle; Flutter-side we
+          // fade the outgoing out while the incoming expands.
+          return Opacity(opacity: 1 - progress, child: child);
+        }
+        return ClipPath(
+            clipper: _CircleCloseClipper(progress), child: child);
+      case 'rectcrop':
+        if (!incoming) return Opacity(opacity: 1 - progress, child: child);
+        return ClipRect(
+            clipper: _RectCropClipper(progress), child: child);
+      // "cover" slides the incoming OVER a stationary outgoing — so the
+      // outgoing stays put while the incoming translates in.
+      case 'coverleft':
+        return incoming
+            ? LayoutBuilder(builder: (_, box) {
+                final x = (1 - progress) * box.maxWidth;
+                return Transform.translate(
+                    offset: Offset(x, 0), child: child);
+              })
+            : child;
+      case 'coverright':
+        return incoming
+            ? LayoutBuilder(builder: (_, box) {
+                final x = -(1 - progress) * box.maxWidth;
+                return Transform.translate(
+                    offset: Offset(x, 0), child: child);
+              })
+            : child;
+      case 'coverup':
+        return incoming
+            ? LayoutBuilder(builder: (_, box) {
+                final y = (1 - progress) * box.maxHeight;
+                return Transform.translate(
+                    offset: Offset(0, y), child: child);
+              })
+            : child;
+      case 'coverdown':
+        return incoming
+            ? LayoutBuilder(builder: (_, box) {
+                final y = -(1 - progress) * box.maxHeight;
+                return Transform.translate(
+                    offset: Offset(0, y), child: child);
+              })
+            : child;
+      // "reveal" is the inverse of cover: outgoing slides out, incoming
+      // stays put and is "revealed" from underneath.
+      case 'revealleft':
+        return !incoming
+            ? LayoutBuilder(builder: (_, box) {
+                final x = -progress * box.maxWidth;
+                return Transform.translate(
+                    offset: Offset(x, 0), child: child);
+              })
+            : child;
+      case 'revealright':
+        return !incoming
+            ? LayoutBuilder(builder: (_, box) {
+                final x = progress * box.maxWidth;
+                return Transform.translate(
+                    offset: Offset(x, 0), child: child);
+              })
+            : child;
+      // Fade-through-black: outgoing fades to black, incoming fades from
+      // black. Implemented as a timed opacity curve for each side.
+      case 'fadeblack':
+        return Stack(
+          children: [
+            Positioned.fill(child: Container(color: Colors.black)),
+            Opacity(
+              opacity: incoming ? progress : 1 - progress,
+              child: child,
+            ),
+          ],
+        );
+      // Grayscale crossfade: outgoing desaturates then fades; incoming
+      // fades in grey then colour. Approximation via ColorFiltered.
+      case 'fadegrays':
+        final grey = ColorFiltered(
+          colorFilter: const ColorFilter.matrix(<double>[
+            0.2126, 0.7152, 0.0722, 0, 0,
+            0.2126, 0.7152, 0.0722, 0, 0,
+            0.2126, 0.7152, 0.0722, 0, 0,
+            0,      0,      0,      1, 0,
+          ]),
+          child: child,
+        );
+        return Opacity(
+          opacity: incoming ? progress : 1 - progress,
+          child: grey,
+        );
+      // "Smooth" slides are like regular slides but use the same width
+      // translation for both outgoing and incoming — FFmpeg renders a
+      // gradient-shaped dissolve between them. Preview approximation:
+      // same math as slideleft / slideright.
+      case 'smoothleft':
+        return LayoutBuilder(builder: (ctx, box) {
+          final w = box.maxWidth;
+          final x = incoming ? (1 - progress) * w : -progress * w;
+          return Transform.translate(offset: Offset(x, 0), child: child);
+        });
+      case 'smoothright':
+        return LayoutBuilder(builder: (ctx, box) {
+          final w = box.maxWidth;
+          final x = incoming ? -(1 - progress) * w : progress * w;
+          return Transform.translate(offset: Offset(x, 0), child: child);
+        });
+      // Shader-only effects — Flutter widget fallback is a clean fade.
+      // The export picks up the real FFmpeg effect from `_lookupStyleSpec`.
+      case 'pixelize':
+      case 'hblur':
+        return Opacity(
+          opacity: incoming ? progress : 1 - progress,
+          child: child,
+        );
+
       default:
         return Opacity(
           opacity: incoming ? progress : 1 - progress,
@@ -959,6 +1102,50 @@ _StyleSpec _lookupStyleSpec(MotionStyleId id) {
       return const _StyleSpec('wipeleft', 0.70, _CameraMotion.none);
     case MotionStyleId.captionStack:
       return const _StyleSpec('slideleft', 0.50, _CameraMotion.none);
+
+    // Expansion pack — 20 xfade transitions with no camera motion.
+    // Transition ids match the FFmpeg xfade names so the preview's
+    // `_transitionWrapper` can dispatch off them directly.
+    case MotionStyleId.wipeUp:
+      return const _StyleSpec('wipeup', 0.50, _CameraMotion.none);
+    case MotionStyleId.wipeDown:
+      return const _StyleSpec('wipedown', 0.50, _CameraMotion.none);
+    case MotionStyleId.wipeTL:
+      return const _StyleSpec('wipetl', 0.50, _CameraMotion.none);
+    case MotionStyleId.wipeTR:
+      return const _StyleSpec('wipetr', 0.50, _CameraMotion.none);
+    case MotionStyleId.wipeBL:
+      return const _StyleSpec('wipebl', 0.50, _CameraMotion.none);
+    case MotionStyleId.wipeBR:
+      return const _StyleSpec('wipebr', 0.50, _CameraMotion.none);
+    case MotionStyleId.circleClose:
+      return const _StyleSpec('circleclose', 0.50, _CameraMotion.none);
+    case MotionStyleId.rectCrop:
+      return const _StyleSpec('rectcrop', 0.55, _CameraMotion.none);
+    case MotionStyleId.coverLeft:
+      return const _StyleSpec('coverleft', 0.50, _CameraMotion.none);
+    case MotionStyleId.coverRight:
+      return const _StyleSpec('coverright', 0.50, _CameraMotion.none);
+    case MotionStyleId.coverUp:
+      return const _StyleSpec('coverup', 0.50, _CameraMotion.none);
+    case MotionStyleId.coverDown:
+      return const _StyleSpec('coverdown', 0.50, _CameraMotion.none);
+    case MotionStyleId.revealLeft:
+      return const _StyleSpec('revealleft', 0.50, _CameraMotion.none);
+    case MotionStyleId.revealRight:
+      return const _StyleSpec('revealright', 0.50, _CameraMotion.none);
+    case MotionStyleId.pixelize:
+      return const _StyleSpec('pixelize', 0.50, _CameraMotion.none);
+    case MotionStyleId.hBlur:
+      return const _StyleSpec('hblur', 0.45, _CameraMotion.none);
+    case MotionStyleId.fadeBlack:
+      return const _StyleSpec('fadeblack', 0.45, _CameraMotion.none);
+    case MotionStyleId.fadeGrays:
+      return const _StyleSpec('fadegrays', 0.60, _CameraMotion.none);
+    case MotionStyleId.smoothLeft:
+      return const _StyleSpec('smoothleft', 0.60, _CameraMotion.none);
+    case MotionStyleId.smoothRight:
+      return const _StyleSpec('smoothright', 0.60, _CameraMotion.none);
   }
 }
 
@@ -1008,6 +1195,115 @@ class _WipeLeftClipper extends CustomClipper<Rect> {
       Rect.fromLTWH(0, 0, size.width * progress, size.height);
   @override
   bool shouldReclip(covariant _WipeLeftClipper old) =>
+      old.progress != progress;
+}
+
+/// Clipper for `wipeup` / `wipedown` — reveals from one horizontal edge.
+enum _WipeEdge { top, bottom }
+
+class _WipeEdgeClipper extends CustomClipper<Rect> {
+  const _WipeEdgeClipper(this.progress, this.edge);
+  final double progress;
+  final _WipeEdge edge;
+  @override
+  Rect getClip(Size size) {
+    final revealed = size.height * progress;
+    return switch (edge) {
+      _WipeEdge.top =>
+        Rect.fromLTWH(0, 0, size.width, revealed), // grows downward
+      _WipeEdge.bottom =>
+        Rect.fromLTWH(0, size.height - revealed, size.width, revealed),
+    };
+  }
+
+  @override
+  bool shouldReclip(covariant _WipeEdgeClipper old) =>
+      old.progress != progress || old.edge != edge;
+}
+
+/// Diagonal wipe clipper. Four orientations — the reveal front runs as a
+/// straight line across the frame; we expose a half-plane clipped to the
+/// child rect. `progress` 0→1 sweeps from the starting corner to its
+/// opposite.
+class _DiagonalWipeClipper extends CustomClipper<Path> {
+  const _DiagonalWipeClipper(this.progress, this.transId);
+  final double progress;
+  final String transId; // 'wipetl' | 'wipetr' | 'wipebl' | 'wipebr'
+  @override
+  Path getClip(Size size) {
+    // Normalised sweep distance — the reveal diagonal crosses the frame
+    // when progress reaches 1. Over-shoot by ~20% so edges clear cleanly.
+    final d = progress * (size.width + size.height) * 1.2;
+    final path = Path();
+    switch (transId) {
+      case 'wipetl':
+        // Front moves from top-left to bottom-right.
+        path.moveTo(0, 0);
+        path.lineTo(d, 0);
+        path.lineTo(0, d);
+        break;
+      case 'wipetr':
+        path.moveTo(size.width, 0);
+        path.lineTo(size.width - d, 0);
+        path.lineTo(size.width, d);
+        break;
+      case 'wipebl':
+        path.moveTo(0, size.height);
+        path.lineTo(d, size.height);
+        path.lineTo(0, size.height - d);
+        break;
+      case 'wipebr':
+        path.moveTo(size.width, size.height);
+        path.lineTo(size.width - d, size.height);
+        path.lineTo(size.width, size.height - d);
+        break;
+    }
+    path.close();
+    return path;
+  }
+
+  @override
+  bool shouldReclip(covariant _DiagonalWipeClipper old) =>
+      old.progress != progress || old.transId != transId;
+}
+
+/// Shrinking-circle clipper for `circleclose` — the INCOMING slide is
+/// revealed through a hole that grows from fully closed (nothing visible)
+/// to the full frame.
+class _CircleCloseClipper extends CustomClipper<Path> {
+  const _CircleCloseClipper(this.progress);
+  final double progress;
+  @override
+  Path getClip(Size size) {
+    final centre = Offset(size.width / 2, size.height / 2);
+    final r = progress *
+        math.sqrt(size.width * size.width + size.height * size.height) / 2;
+    return Path()..addOval(Rect.fromCircle(center: centre, radius: r));
+  }
+
+  @override
+  bool shouldReclip(covariant _CircleCloseClipper old) =>
+      old.progress != progress;
+}
+
+/// Rectangular box that expands from centre — used by the `rectcrop`
+/// transition. The incoming slide is revealed inside a growing box.
+class _RectCropClipper extends CustomClipper<Rect> {
+  const _RectCropClipper(this.progress);
+  final double progress;
+  @override
+  Rect getClip(Size size) {
+    final w = size.width * progress;
+    final h = size.height * progress;
+    return Rect.fromCenter(
+      center: Offset(size.width / 2, size.height / 2),
+      width: w,
+      height: h,
+    );
+  }
+
+  @override
+  bool shouldReclip(covariant _RectCropClipper old) =>
       old.progress != progress;
 }
 

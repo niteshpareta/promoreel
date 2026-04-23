@@ -18,6 +18,30 @@ enum MotionStyleId {
   bottomThirdHighlight,
   progressiveReveal,
   captionStack,
+
+  // Expansion pack — all map to FFmpeg's built-in `xfade` transition
+  // types (no new shader code required). Organised roughly from
+  // "subtle" wipes up to "informational" covers / reveals.
+  wipeUp,
+  wipeDown,
+  wipeTL,
+  wipeTR,
+  wipeBL,
+  wipeBR,
+  circleClose,
+  rectCrop,
+  coverLeft,
+  coverRight,
+  coverUp,
+  coverDown,
+  revealLeft,
+  revealRight,
+  pixelize,
+  hBlur,
+  fadeBlack,
+  fadeGrays,
+  smoothLeft,
+  smoothRight,
 }
 
 class MotionStyle {
@@ -60,5 +84,32 @@ class MotionStyle {
     MotionStyle(id: MotionStyleId.bottomThirdHighlight, family: MotionStyleFamily.informational, nameEn: 'Bottom Highlight', nameHi: 'बॉटम हाइलाइट', isPro: true, lottieAsset: 'assets/motion_styles/bottom_third.json', previewThumbnail: 'assets/motion_styles/previews/bottom_third.webp'),
     MotionStyle(id: MotionStyleId.progressiveReveal, family: MotionStyleFamily.informational, nameEn: 'Progressive', nameHi: 'प्रोग्रेसिव', isPro: true, lottieAsset: 'assets/motion_styles/progressive.json', previewThumbnail: 'assets/motion_styles/previews/progressive.webp'),
     MotionStyle(id: MotionStyleId.captionStack, family: MotionStyleFamily.informational, nameEn: 'Caption Stack', nameHi: 'कैप्शन स्टैक', isPro: true, lottieAsset: 'assets/motion_styles/caption_stack.json', previewThumbnail: 'assets/motion_styles/previews/caption_stack.webp'),
+
+    // ── Expansion pack (20 extra xfade transitions) ──────────────────────
+    // Subtle family — free, calmer wipes
+    MotionStyle(id: MotionStyleId.wipeUp,       family: MotionStyleFamily.subtle, nameEn: 'Wipe Up',       nameHi: 'विपे अप',      isPro: false, lottieAsset: '', previewThumbnail: ''),
+    MotionStyle(id: MotionStyleId.wipeDown,     family: MotionStyleFamily.subtle, nameEn: 'Wipe Down',     nameHi: 'विपे डाउन',    isPro: false, lottieAsset: '', previewThumbnail: ''),
+    MotionStyle(id: MotionStyleId.smoothLeft,   family: MotionStyleFamily.subtle, nameEn: 'Smooth Left',   nameHi: 'स्मूद लेफ्ट',  isPro: true,  lottieAsset: '', previewThumbnail: ''),
+    MotionStyle(id: MotionStyleId.smoothRight,  family: MotionStyleFamily.subtle, nameEn: 'Smooth Right',  nameHi: 'स्मूद राइट',   isPro: true,  lottieAsset: '', previewThumbnail: ''),
+
+    // Energetic family — more dramatic effects
+    MotionStyle(id: MotionStyleId.circleClose, family: MotionStyleFamily.energetic, nameEn: 'Circle In',  nameHi: 'सर्कल इन',    isPro: false, lottieAsset: '', previewThumbnail: ''),
+    MotionStyle(id: MotionStyleId.fadeBlack,   family: MotionStyleFamily.energetic, nameEn: 'Fade Black', nameHi: 'ब्लैक फेड',   isPro: false, lottieAsset: '', previewThumbnail: ''),
+    MotionStyle(id: MotionStyleId.fadeGrays,   family: MotionStyleFamily.energetic, nameEn: 'Grayscale',  nameHi: 'ग्रेस्केल',   isPro: true,  lottieAsset: '', previewThumbnail: ''),
+    MotionStyle(id: MotionStyleId.pixelize,    family: MotionStyleFamily.energetic, nameEn: 'Pixelize',   nameHi: 'पिक्सेलाइज़', isPro: true,  lottieAsset: '', previewThumbnail: ''),
+    MotionStyle(id: MotionStyleId.hBlur,       family: MotionStyleFamily.energetic, nameEn: 'Motion Blur',nameHi: 'मोशन ब्लर',   isPro: true,  lottieAsset: '', previewThumbnail: ''),
+    MotionStyle(id: MotionStyleId.rectCrop,    family: MotionStyleFamily.energetic, nameEn: 'Box Reveal', nameHi: 'बॉक्स रिवील', isPro: true,  lottieAsset: '', previewThumbnail: ''),
+
+    // Informational family — geometric / diagonal
+    MotionStyle(id: MotionStyleId.wipeTL,      family: MotionStyleFamily.informational, nameEn: 'Diagonal TL', nameHi: 'तिरछा TL',   isPro: true, lottieAsset: '', previewThumbnail: ''),
+    MotionStyle(id: MotionStyleId.wipeTR,      family: MotionStyleFamily.informational, nameEn: 'Diagonal TR', nameHi: 'तिरछा TR',   isPro: true, lottieAsset: '', previewThumbnail: ''),
+    MotionStyle(id: MotionStyleId.wipeBL,      family: MotionStyleFamily.informational, nameEn: 'Diagonal BL', nameHi: 'तिरछा BL',   isPro: true, lottieAsset: '', previewThumbnail: ''),
+    MotionStyle(id: MotionStyleId.wipeBR,      family: MotionStyleFamily.informational, nameEn: 'Diagonal BR', nameHi: 'तिरछा BR',   isPro: true, lottieAsset: '', previewThumbnail: ''),
+    MotionStyle(id: MotionStyleId.coverLeft,   family: MotionStyleFamily.informational, nameEn: 'Cover Left',  nameHi: 'कवर लेफ्ट',  isPro: true, lottieAsset: '', previewThumbnail: ''),
+    MotionStyle(id: MotionStyleId.coverRight,  family: MotionStyleFamily.informational, nameEn: 'Cover Right', nameHi: 'कवर राइट',   isPro: true, lottieAsset: '', previewThumbnail: ''),
+    MotionStyle(id: MotionStyleId.coverUp,     family: MotionStyleFamily.informational, nameEn: 'Cover Up',    nameHi: 'कवर अप',     isPro: true, lottieAsset: '', previewThumbnail: ''),
+    MotionStyle(id: MotionStyleId.coverDown,   family: MotionStyleFamily.informational, nameEn: 'Cover Down',  nameHi: 'कवर डाउन',   isPro: true, lottieAsset: '', previewThumbnail: ''),
+    MotionStyle(id: MotionStyleId.revealLeft,  family: MotionStyleFamily.informational, nameEn: 'Reveal Left', nameHi: 'रिवील लेफ्ट',isPro: true, lottieAsset: '', previewThumbnail: ''),
+    MotionStyle(id: MotionStyleId.revealRight, family: MotionStyleFamily.informational, nameEn: 'Reveal Right',nameHi: 'रिवील राइट', isPro: true, lottieAsset: '', previewThumbnail: ''),
   ];
 }

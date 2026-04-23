@@ -94,4 +94,6 @@ flutter:
 
   assets:
     - assets/motion_styles/
+    - assets/motion_previews/transition/
+    - assets/motion_previews/camera/
     - assets/music/
