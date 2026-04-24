@@ -64,6 +64,42 @@ class ProjectNotifier extends StateNotifier<VideoProject?> {
     state = state!.withFrameDuration(index, seconds);
   }
 
+  /// Set the trim window (in milliseconds) on a video slide. Also
+  /// updates `frameDurations[index]` so the slide's on-screen time
+  /// matches the trim length — current product call is "auto-match
+  /// duration when trimming" (decoupling can come later if asked for).
+  void setFrameVideoTrim(int index, int startMs, int endMs) {
+    if (state == null) return;
+    var next = state!.withFrameVideoTrim(index, startMs, endMs);
+    if (endMs > startMs) {
+      final durSec = ((endMs - startMs) / 1000.0).ceil().clamp(1, 60);
+      next = next.withFrameDuration(index, durSec);
+    }
+    state = next;
+  }
+
+  void setFrameVideoRotation(int index, int degrees) {
+    if (state == null) return;
+    state = state!.withFrameVideoRotation(index, degrees);
+  }
+
+  void setFrameVideoUseAudio(int index, bool enabled) {
+    if (state == null) return;
+    state = state!.withFrameVideoUseAudio(index, enabled);
+  }
+
+  void setFrameVideoSpeed(int index, double speed) {
+    if (state == null) return;
+    state = state!.withFrameVideoSpeed(index, speed);
+  }
+
+  void setFrameVideoCropRect(int index,
+      {required double x, required double y,
+      required double w, required double h}) {
+    if (state == null) return;
+    state = state!.withFrameVideoCropRect(index, x: x, y: y, w: w, h: h);
+  }
+
   void setFrameTextPosition(int index, String position) {
     if (state == null) return;
     state = state!.withFrameTextPosition(index, position);

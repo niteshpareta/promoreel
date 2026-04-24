@@ -19,6 +19,7 @@ import '../data/models/video_project.dart';
 import '../data/services/music_library.dart';
 import '../data/services/video_history_service.dart';
 import 'branding_compositor.dart';
+import 'intro_outro_compositor.dart';
 import 'motion_style_engine.dart';
 import 'text_renderer.dart';
 
@@ -482,6 +483,8 @@ class MediaEncoder {
     String? watermarkPngPath;
     String? countdownPngPath;
     String? qrPngPath;
+    String? introCardPath;
+    String? outroCardPath;
 
     try {
       final n = project.assetPaths.length;
@@ -651,10 +654,15 @@ class MediaEncoder {
         ));
       }
 
-      // 5. Branding strip
+      // 5. Branding strip — rendered as a full-frame transparent PNG
+      // so the compositor controls exactly where the strip sits (top
+      // vs bottom, side-badge anchored right). Encoder overlays at 0,0.
       if (branding != null && branding.businessName.isNotEmpty) {
         await BrandingCompositor.renderToFile(
-            preset: branding, outputPath: brandingPngPath);
+            preset: branding,
+            outputPath: brandingPngPath,
+            outW: outW,
+            outH: outH);
         brandingPath = brandingPngPath;
       }
 
@@ -722,23 +730,115 @@ class MediaEncoder {
       }
 
       // 7. Build + execute FFmpeg command
-      final preComposedFlags = List.generate(
-          resolvedPaths.length, (i) => preComposedPaths[i] != null);
+
+      // Optional intro / outro brand cards — rendered here as pre-
+      // composed full-frame PNGs and prepended / appended to the slide
+      // list so the xfade chain carries them onto content naturally.
+      final hasBranding = branding != null && branding.businessName.isNotEmpty;
+      final introDur =
+          (hasBranding && branding.showIntro) ? branding.introDuration : 0.0;
+      final outroDur =
+          (hasBranding && branding.showOutro) ? branding.outroDuration : 0.0;
+
+      if (introDur > 0 && branding != null) {
+        introCardPath = p.join(tmp, 'intro_$ts.png');
+        await IntroOutroCompositor.renderCard(
+          preset: branding,
+          outputPath: introCardPath,
+          outW: outW,
+          outH: outH,
+          isOutro: false,
+        );
+      }
+      if (outroDur > 0 && branding != null) {
+        outroCardPath = p.join(tmp, 'outro_$ts.png');
+        await IntroOutroCompositor.renderCard(
+          preset: branding,
+          outputPath: outroCardPath,
+          outW: outW,
+          outH: outH,
+          isOutro: true,
+        );
+      }
+
+      // Build the augmented per-slide arrays (content + intro/outro).
+      final augInputPaths = <String>[];
+      final augIsVideo = <bool>[];
+      final augDurations = <double>[];
+      final augPreComposed = <bool>[];
+      final augVoiceovers = <String?>[];
+      final augVideoTrimStart = <double>[];
+      final augVideoRotations = <int>[];
+      final augVideoUseAudio = <bool>[];
+      final augVideoSpeed = <double>[];
+      final augVideoCropRects = <List<double>>[];
+
+      void appendSynthetic(String path, double dur) {
+        augInputPaths.add(path);
+        augIsVideo.add(false);
+        augDurations.add(dur);
+        augPreComposed.add(true);
+        augVoiceovers.add(null);
+        augVideoTrimStart.add(0.0);
+        augVideoRotations.add(0);
+        augVideoUseAudio.add(false);
+        augVideoSpeed.add(1.0);
+        augVideoCropRects.add(const [0.0, 0.0, 1.0, 1.0]);
+      }
+
+      if (introCardPath != null) appendSynthetic(introCardPath, introDur);
+      for (int i = 0; i < resolvedPaths.length; i++) {
+        augInputPaths.add(finalInputPaths[i]);
+        augIsVideo.add(isVideoFlags[i]);
+        augDurations.add(resolvedDurations[i]);
+        augPreComposed.add(preComposedPaths[i] != null);
+        augVoiceovers.add(frameVoiceovers[i]);
+        augVideoTrimStart.add(project.videoTrimStartMsFor(i) / 1000.0);
+        augVideoRotations.add(project.videoRotationFor(i));
+        augVideoUseAudio.add(project.videoUseAudioFor(i));
+        augVideoSpeed.add(project.videoSpeedFor(i));
+        augVideoCropRects.add(project.videoCropRectFor(i));
+      }
+      if (outroCardPath != null) appendSynthetic(outroCardPath, outroDur);
+
+      // Captions live on original content slides. If we prepended an
+      // intro, every caption has to shift right by intro duration so
+      // it still fires on its slide.
+      final shiftedTextOverlays = introDur == 0
+          ? textOverlays
+          : [
+              for (final t in textOverlays)
+                FrameTextOverlay(
+                  path: t.path,
+                  startSec: t.startSec + introDur,
+                  endSec: t.endSec + introDur,
+                  animStyle: t.animStyle,
+                  textPosition: t.textPosition,
+                ),
+            ];
+
+      final augTotalDuration =
+          (totalDuration + introDur + outroDur).ceil();
 
       final command = MotionStyleEngine.build(
-        inputPaths:        finalInputPaths,
-        isVideo:           isVideoFlags,
+        inputPaths:        augInputPaths,
+        isVideo:           augIsVideo,
         outputPath:        outputPath,
-        textOverlays:      textOverlays,
+        textOverlays:      shiftedTextOverlays,
         brandingPath:      brandingPath,
         audioPath:         audioPath,
-        frameVoiceovers:   frameVoiceovers,
-        totalDuration:     totalDuration,
+        frameVoiceovers:   augVoiceovers,
+        totalDuration:     augTotalDuration,
         styleId:           project.motionStyleId,
         transitionId:      project.transitionId,
         cameraMotionId:    project.cameraMotionId,
-        frameDurations:    resolvedDurations,
-        preComposedFlags:  preComposedFlags,
+        frameDurations:    augDurations,
+        preComposedFlags:  augPreComposed,
+        videoTrimStartSec: augVideoTrimStart,
+        videoRotations:    augVideoRotations,
+        videoUseAudio:     augVideoUseAudio,
+        videoSpeed:        augVideoSpeed,
+        videoCropRects:    augVideoCropRects,
         watermarkPath:     watermarkPngPath,
         countdownPath:     countdownPngPath,
         qrOverlayPath:     qrPngPath,
@@ -765,6 +865,8 @@ class MediaEncoder {
         if (watermarkPngPath != null) watermarkPngPath,
         if (countdownPngPath != null) countdownPngPath,
         if (qrPngPath != null) qrPngPath,
+        if (introCardPath != null) introCardPath,
+        if (outroCardPath != null) outroCardPath,
       ]) {
         try { File(path).deleteSync(); } catch (_) {}
       }

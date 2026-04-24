@@ -204,6 +204,27 @@ class MotionStyleEngine {
     // When true for an index, the image is already composited to outW×outH by Flutter.
     // FFmpeg only needs fps+format — no split/blur/scale/overlay.
     List<bool>? preComposedFlags,
+    // Per-slide trim-start offset in seconds. Only meaningful when
+    // `isVideo[i]` is true — FFmpeg seeks this far into the source
+    // before reading. `null` or absent = start at 0.
+    List<double>? videoTrimStartSec,
+    // Per-slide rotation in degrees (0 / 90 / 180 / 270). Only meaningful
+    // when `isVideo[i]` is true; applied as an FFmpeg `transpose` or
+    // `hflip,vflip` filter before the scale-and-pad chain.
+    List<int>? videoRotations,
+    // Per-slide opt-in for mixing the source video's audio into the
+    // output. When true for index `i`, that input's `:a` stream is
+    // delayed to `starts[i]`, trimmed to `frameDurations[i]`, and mixed
+    // with any voiceovers and music. No-op for non-video slides.
+    List<bool>? videoUseAudio,
+    // Per-slide playback speed multiplier. `1.0` default. Affects how
+    // much source material is consumed (`inputLen * speed`) and the
+    // `setpts`/`atempo` filters applied.
+    List<double>? videoSpeed,
+    // Per-slide crop rect as [x, y, w, h] in [0,1] fractions of the
+    // source frame. `null` / `[0,0,1,1]` = no crop. Applied before
+    // rotation so fractions map to the original orientation.
+    List<List<double>>? videoCropRects,
     String? watermarkPath,
     String? countdownPath,
     String? qrOverlayPath,
@@ -243,7 +264,23 @@ class MotionStyleEngine {
           i < preComposedFlags.length && preComposedFlags[i];
 
       if (isVideo[i]) {
-        buf.write('-ss 0 -t ${inputLen.toStringAsFixed(3)} -i "${inputPaths[i]}" ');
+        // Per-slide trim start — seek this far into the source before
+        // reading, then take `inputLen * speed` seconds. `-ss` before
+        // `-i` is the fast-seek form; plenty accurate for keyframe-
+        // aligned clips and ~10× faster than output-side seeking.
+        // Speed>1 consumes extra material so the sped-up clip still
+        // fills the slide duration; speed<1 reads less and the setpts
+        // filter expands it to the slide duration.
+        final trimStart = videoTrimStartSec != null &&
+                i < videoTrimStartSec.length
+            ? videoTrimStartSec[i]
+            : 0.0;
+        final speed = videoSpeed != null && i < videoSpeed.length
+            ? videoSpeed[i]
+            : 1.0;
+        final readLen = inputLen * speed;
+        buf.write('-ss ${trimStart.toStringAsFixed(3)} '
+            '-t ${readLen.toStringAsFixed(3)} -i "${inputPaths[i]}" ');
       } else if (preComposed) {
         buf.write('-loop 1 -framerate 1 -t ${inputLen.toStringAsFixed(3)} '
             '-i "${inputPaths[i]}" ');
@@ -301,7 +338,47 @@ class MotionStyleEngine {
       if (preComposed) {
         buf.write('[$i:v]fps=30$motion,format=yuv420p[v$i]; ');
       } else if (isVideo[i]) {
-        buf.write('[$i:v]split[raw${i}a][raw${i}b]; ');
+        // Per-slide rotation. Applied before scale/crop so the subsequent
+        // cover-pad chain sees the oriented frame.
+        final rot = videoRotations != null && i < videoRotations.length
+            ? videoRotations[i] % 360
+            : 0;
+        final String rotFilter = switch (rot) {
+          90 => 'transpose=1,',
+          180 => 'hflip,vflip,',
+          270 => 'transpose=2,',
+          _ => '',
+        };
+        // Per-slide crop — in/out are fractions of the source frame.
+        // Applied BEFORE rotation so fractions map to the original
+        // orientation (what the user drew the crop against in the UI).
+        String cropFilter = '';
+        if (videoCropRects != null &&
+            i < videoCropRects.length &&
+            videoCropRects[i].length == 4) {
+          final r = videoCropRects[i];
+          final cx = r[0].clamp(0.0, 1.0);
+          final cy = r[1].clamp(0.0, 1.0);
+          final cw = r[2].clamp(0.01, 1.0);
+          final ch = r[3].clamp(0.01, 1.0);
+          if (cx > 0.0001 || cy > 0.0001 || cw < 0.9999 || ch < 0.9999) {
+            cropFilter = 'crop=iw*${cw.toStringAsFixed(4)}:'
+                'ih*${ch.toStringAsFixed(4)}:'
+                'iw*${cx.toStringAsFixed(4)}:'
+                'ih*${cy.toStringAsFixed(4)},';
+          }
+        }
+        // Per-slide speed. `setpts=PTS/S` retimes the stream so the
+        // clip plays faster/slower; combined with the extended `-t`
+        // input read above, the output slide length remains equal to
+        // `frameDurations[i]` regardless of speed.
+        final speed = videoSpeed != null && i < videoSpeed.length
+            ? videoSpeed[i]
+            : 1.0;
+        final String speedFilter = speed == 1.0
+            ? ''
+            : 'setpts=PTS/${speed.toStringAsFixed(3)},';
+        buf.write('[$i:v]$cropFilter$rotFilter${speedFilter}split[raw${i}a][raw${i}b]; ');
         buf.write('[raw${i}a]scale=$outW:$outH:'
             'force_original_aspect_ratio=increase,'
             'crop=$outW:$outH,boxblur=3:1[bg$i]; ');
@@ -402,9 +479,12 @@ class MotionStyleEngine {
       nextIdx++;
     }
 
-    // Branding strip
+    // Branding strip — the compositor now emits a full-frame
+    // transparent PNG with the strip positioned internally (top /
+    // bottom / side badge), so we overlay at 0,0 instead of anchoring
+    // to the bottom.
     if (brandingPath != null) {
-      buf.write('[$lastLabel][${nextIdx}:v]overlay=0:H-h:eof_action=repeat[vb]; ');
+      buf.write('[$lastLabel][${nextIdx}:v]overlay=0:0:eof_action=repeat[vb]; ');
       lastLabel = 'vb';
       nextIdx++;
     }
@@ -435,44 +515,115 @@ class MotionStyleEngine {
     // ── Output ────────────────────────────────────────────────────────────────
     buf.write('-map "[vout]" ');
 
+    // Collect every per-slide source-video audio stream that the user
+    // opted into. We reuse the same adelay+afade pattern as voiceovers
+    // so the mix path below doesn't need to distinguish — they're all
+    // just clips placed at `starts[i]` with a slide-duration window.
+    final sourceAudios = <({
+      int frameIdx,
+      int inputIdx,
+      double startSec,
+      double speed,
+    })>[];
+    if (videoUseAudio != null) {
+      for (int i = 0; i < n && i < videoUseAudio.length; i++) {
+        if (!isVideo[i] || !videoUseAudio[i]) continue;
+        final speed = videoSpeed != null && i < videoSpeed.length
+            ? videoSpeed[i]
+            : 1.0;
+        sourceAudios.add((
+          frameIdx: i,
+          inputIdx: i,
+          startSec: starts[i],
+          speed: speed,
+        ));
+      }
+    }
+
+    String clipFilter({
+      required int inputIdx,
+      required int frameIdx,
+      required double startSec,
+      required double speed,
+      required String label,
+    }) {
+      // Only one xfade shifts the final output timeline — the
+      // intermediate slides contribute `dur[i] + trans` of material
+      // and the xfade eats `trans` of it, so the net compression is
+      // a constant `trans` (not `frameIdx * trans`). Slide 0 starts
+      // at t=0, slides 1..n-1 appear at `starts[i] - trans`.
+      final correction = frameIdx > 0 ? trans : 0.0;
+      final delayMs =
+          ((startSec - correction) * 1000).round().clamp(0, 999999);
+      final fadeSt = (frameDurations[frameIdx] - 0.15)
+          .clamp(0.0, double.infinity);
+      // atempo (speed) must run before adelay so the delay is measured
+      // in output-time milliseconds, not source-time.
+      final atempo =
+          speed == 1.0 ? '' : 'atempo=${speed.toStringAsFixed(3)},';
+      return '[$inputIdx:a]$atempo'
+          'adelay=$delayMs|$delayMs,'
+          'afade=t=out:st=${fadeSt.toStringAsFixed(3)}:d=0.15'
+          '[$label];';
+    }
+
     final hasVoiceovers = activeVoiceovers.isNotEmpty;
-    if (audioPath != null && hasVoiceovers) {
+    final hasSourceAudio = sourceAudios.isNotEmpty;
+    final hasClips = hasVoiceovers || hasSourceAudio;
+
+    if (hasClips) {
       final musicIdx = n;
-      final voiceFilters = StringBuffer();
+      final filters = StringBuffer();
+      final labels = <String>[];
+
       for (final vo in activeVoiceovers) {
-        // Correct for xfade overlap: each transition after the first shaves
-        // `trans` seconds off the absolute timeline position.
+        // Voiceover frameIdx semantics predate source audio and were
+        // historically off-by-one: `frameIdx > 1` and `(frameIdx - 1)`
+        // — preserve that so existing voiceover timings stay identical.
         final correction = vo.frameIdx > 1 ? (vo.frameIdx - 1) * trans : 0.0;
-        final delayMs = ((vo.startSec - correction) * 1000).round().clamp(0, 999999);
-        final fadeSt = (frameDurations[vo.frameIdx] - 0.15).clamp(0.0, double.infinity);
-        voiceFilters.write('[${vo.inputIdx}:a]'
+        final delayMs = ((vo.startSec - correction) * 1000)
+            .round()
+            .clamp(0, 999999);
+        final fadeSt = (frameDurations[vo.frameIdx] - 0.15)
+            .clamp(0.0, double.infinity);
+        filters.write('[${vo.inputIdx}:a]'
             'adelay=$delayMs|$delayMs,'
             'afade=t=out:st=${fadeSt.toStringAsFixed(3)}:d=0.15'
             '[vod${vo.frameIdx}];');
+        labels.add('[vod${vo.frameIdx}]');
       }
-      final vLabels = activeVoiceovers.map((v) => '[vod${v.frameIdx}]').join();
-      voiceFilters.write('${vLabels}amix=inputs=${activeVoiceovers.length}:duration=longest[vomix];');
-      voiceFilters.write('[${musicIdx}:a]volume=0.35[music];');
-      voiceFilters.write('[vomix][music]amix=inputs=2:duration=longest:weights=2 1[aout]');
-      buf.write('-filter_complex "${voiceFilters.toString()}" -map "[aout]" -c:a aac -b:a 128k ');
-    } else if (hasVoiceovers) {
-      final voiceFilters = StringBuffer();
-      for (final vo in activeVoiceovers) {
-        final correction = vo.frameIdx > 1 ? (vo.frameIdx - 1) * trans : 0.0;
-        final delayMs = ((vo.startSec - correction) * 1000).round().clamp(0, 999999);
-        final fadeSt = (frameDurations[vo.frameIdx] - 0.15).clamp(0.0, double.infinity);
-        voiceFilters.write('[${vo.inputIdx}:a]'
-            'adelay=$delayMs|$delayMs,'
-            'afade=t=out:st=${fadeSt.toStringAsFixed(3)}:d=0.15'
-            '[vod${vo.frameIdx}];');
+      for (final sa in sourceAudios) {
+        final lbl = 'src${sa.frameIdx}';
+        filters.write(clipFilter(
+          inputIdx: sa.inputIdx,
+          frameIdx: sa.frameIdx,
+          startSec: sa.startSec,
+          speed: sa.speed,
+          label: lbl,
+        ));
+        labels.add('[$lbl]');
       }
-      final vLabels = activeVoiceovers.map((v) => '[vod${v.frameIdx}]').join();
-      if (activeVoiceovers.length == 1) {
-        voiceFilters.write('${vLabels}anull[aout]');
+
+      if (audioPath != null) {
+        if (labels.length == 1) {
+          filters.write('${labels.first}anull[clipmix];');
+        } else {
+          filters.write(
+              '${labels.join()}amix=inputs=${labels.length}:duration=longest[clipmix];');
+        }
+        filters.write('[$musicIdx:a]volume=0.35[music];');
+        filters.write(
+            '[clipmix][music]amix=inputs=2:duration=longest:weights=2 1[aout]');
       } else {
-        voiceFilters.write('${vLabels}amix=inputs=${activeVoiceovers.length}:duration=longest[aout]');
+        if (labels.length == 1) {
+          filters.write('${labels.first}anull[aout]');
+        } else {
+          filters.write(
+              '${labels.join()}amix=inputs=${labels.length}:duration=longest[aout]');
+        }
       }
-      buf.write('-filter_complex "${voiceFilters.toString()}" -map "[aout]" -c:a aac -b:a 128k ');
+      buf.write(
+          '-filter_complex "${filters.toString()}" -map "[aout]" -c:a aac -b:a 128k ');
     } else if (audioPath != null) {
       buf.write('-map ${n}:a ');
       buf.write('-c:a aac -b:a 128k '

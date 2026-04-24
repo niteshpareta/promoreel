@@ -139,6 +139,17 @@ class BrandingService {
         'phoneNumber': p.phoneNumber,
         'address': p.address,
         'logoPath': p.logoPath,
+        'tagline': p.tagline,
+        'website': p.website,
+        'socialHandle': p.socialHandle,
+        'primaryColorArgb': p.primaryColorArgb,
+        'accentColorArgb': p.accentColorArgb,
+        'styleId': p.styleId,
+        'stripPosition': p.stripPosition,
+        'showIntro': p.showIntro,
+        'showOutro': p.showOutro,
+        'introDuration': p.introDuration,
+        'outroDuration': p.outroDuration,
       };
 
   static BrandingPreset _fromJson(Map<String, dynamic> m) => BrandingPreset(
@@ -148,5 +159,16 @@ class BrandingService {
         phoneNumber: m['phoneNumber'] as String? ?? '',
         address: m['address'] as String? ?? '',
         logoPath: m['logoPath'] as String?,
+        tagline: m['tagline'] as String? ?? '',
+        website: m['website'] as String? ?? '',
+        socialHandle: m['socialHandle'] as String? ?? '',
+        primaryColorArgb: (m['primaryColorArgb'] as num?)?.toInt() ?? 0,
+        accentColorArgb: (m['accentColorArgb'] as num?)?.toInt() ?? 0,
+        styleId: m['styleId'] as String? ?? 'classic',
+        stripPosition: m['stripPosition'] as String? ?? 'bottom',
+        showIntro: m['showIntro'] as bool? ?? false,
+        showOutro: m['showOutro'] as bool? ?? false,
+        introDuration: (m['introDuration'] as num?)?.toDouble() ?? 1.5,
+        outroDuration: (m['outroDuration'] as num?)?.toDouble() ?? 1.5,
       );
 }

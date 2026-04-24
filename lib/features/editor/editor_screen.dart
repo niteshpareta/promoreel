@@ -15,6 +15,7 @@ import '../../core/ui/pr_button.dart';
 import '../../core/ui/pr_icons.dart';
 import '../../core/ui/tokens.dart';
 import '../../data/models/branding_preset.dart';
+import '../branding/brand_strip_preview.dart';
 import '../../data/models/caption_style.dart';
 import '../../data/models/export_format.dart';
 import '../../data/models/motion_axes.dart';
@@ -99,6 +100,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
                 }
               },
               onSlidesTap: () => _showSlidesSheet(context),
+              onTrimTap: () => _showTrimSheet(context),
               onQrTap: () {
                 FocusScope.of(context).unfocus();
                 showQrOverlaySheet(context);
@@ -134,6 +136,19 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
         ),
       ),
     ),
+    );
+  }
+
+  void _showTrimSheet(BuildContext context) {
+    FocusScope.of(context).unfocus();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.bgSurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => const _TrimPickerSheet(),
     );
   }
 
@@ -267,6 +282,7 @@ class _HorizToolStrip extends StatelessWidget {
     required this.onTextTap,
     required this.onBrandingTap,
     required this.onSlidesTap,
+    required this.onTrimTap,
     required this.onQrTap,
     required this.onCountdownTap,
     required this.onVoiceoverTap,
@@ -278,6 +294,7 @@ class _HorizToolStrip extends StatelessWidget {
   final VoidCallback onTextTap;
   final VoidCallback onBrandingTap;
   final VoidCallback onSlidesTap;
+  final VoidCallback onTrimTap;
   final VoidCallback onQrTap;
   final VoidCallback onCountdownTap;
   final VoidCallback onVoiceoverTap;
@@ -285,6 +302,10 @@ class _HorizToolStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Highlight Trim if any video slide already has a trim applied —
+    // the sheet itself lists which slides are eligible / trimmed.
+    final trimApplied = _anyTrimApplied(project);
+
     return Container(
       height: 82,
       color: AppColors.bgSurface,
@@ -302,6 +323,12 @@ class _HorizToolStrip extends StatelessWidget {
             icon: Icons.photo_library_rounded,
             label: 'Slides\n${project.assetPaths.length}',
             onTap: onSlidesTap,
+          ),
+          _HorizBtn(
+            icon: Icons.content_cut_rounded,
+            label: 'Trim',
+            onTap: onTrimTap,
+            isActive: trimApplied,
           ),
           _HorizBtn(
             icon: Icons.branding_watermark_rounded,
@@ -882,45 +909,23 @@ class _PreviewCanvasState extends State<_PreviewCanvas>
     }
   }
 
-  Widget _buildBrandingStrip() => Positioned(
-        left: 0, right: 0, bottom: 0,
-        child: Container(
-          color: AppColors.brandingStrip,
-          padding:
-              const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          child: Row(
-            children: [
-              Container(
-                width: 26, height: 26,
-                decoration: BoxDecoration(
-                  color: AppColors.bgSurfaceVariant,
-                  borderRadius: BorderRadius.circular(5),
-                ),
-                child: const Icon(Icons.store_rounded,
-                    size: 14, color: AppColors.primary),
-              ),
-              const SizedBox(width: 7),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(widget.branding!.businessName,
-                        style: AppTextStyles.labelSmall
-                            .copyWith(fontSize: 9),
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
-                    if (widget.branding!.phoneNumber.isNotEmpty)
-                      Text(widget.branding!.phoneNumber,
-                          style: AppTextStyles.labelSmall.copyWith(
-                              fontSize: 8,
-                              color: AppColors.textSecondary),
-                          maxLines: 1, overflow: TextOverflow.ellipsis),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
+  Widget _buildBrandingStrip() {
+    final preset = widget.branding!;
+    final topAnchored = preset.stripPosition == 'top';
+    return LayoutBuilder(builder: (ctx, box) {
+      final strip = BrandStripPreview(
+        preset: preset,
+        width: box.maxWidth,
       );
+      return Positioned(
+        left: 0,
+        right: 0,
+        top: topAnchored ? 0 : null,
+        bottom: topAnchored ? null : 0,
+        child: strip,
+      );
+    });
+  }
 
   Widget _buildNavDots() => Positioned(
         top: 10, left: 0, right: 0,
@@ -1351,6 +1356,277 @@ class _PickSlot extends StatelessWidget {
                             color: AppColors.textDisabled, fontSize: 9)),
                   ],
                 ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Trim picker sheet ────────────────────────────────────────────────────────
+//
+// Opened from the Trim button on the horizontal tool strip. Lists only
+// the video slides (images / text / before-after aren't trimmable) so
+// the user picks which frame to trim without first hunting for it in
+// the preview.
+
+bool _anyTrimApplied(VideoProject project) {
+  for (int i = 0; i < project.assetPaths.length; i++) {
+    if (!_isVideoPath(project.assetPaths[i])) continue;
+    if (project.videoTrimStartMsFor(i) > 0 ||
+        project.videoTrimEndMsFor(i) > 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+class _TrimPickerSheet extends ConsumerStatefulWidget {
+  const _TrimPickerSheet();
+
+  @override
+  ConsumerState<_TrimPickerSheet> createState() => _TrimPickerSheetState();
+}
+
+class _TrimPickerSheetState extends ConsumerState<_TrimPickerSheet> {
+  final Map<String, Uint8List?> _thumbCache = {};
+
+  Future<Uint8List?> _getThumb(String path) async {
+    if (_thumbCache.containsKey(path)) return _thumbCache[path];
+    final bytes = await VideoThumbnail.thumbnailData(
+      video: path,
+      imageFormat: ImageFormat.JPEG,
+      maxHeight: 240,
+      quality: 70,
+    );
+    if (mounted) setState(() => _thumbCache[path] = bytes);
+    return bytes;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final project = ref.watch(projectProvider);
+    if (project == null) return const SizedBox.shrink();
+
+    // Collect (originalIndex, path) pairs for every video slide.
+    final videoEntries = <MapEntry<int, String>>[];
+    for (int i = 0; i < project.assetPaths.length; i++) {
+      final p = project.assetPaths[i];
+      if (_isVideoPath(p)) videoEntries.add(MapEntry(i, p));
+    }
+
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.55,
+      minChildSize: 0.4,
+      maxChildSize: 0.85,
+      builder: (ctx, scrollCtrl) => Column(
+        children: [
+          Container(
+            margin: const EdgeInsets.only(top: 10, bottom: 8),
+            width: 36,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppColors.divider,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Trim a video', style: AppTextStyles.titleMedium),
+                      const SizedBox(height: 2),
+                      Text(
+                        videoEntries.isEmpty
+                            ? 'No video slides in this project'
+                            : 'Pick a slide to open its trim editor',
+                        style: AppTextStyles.bodySmall
+                            .copyWith(color: AppColors.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: videoEntries.isEmpty
+                ? _TrimEmptyState()
+                : ListView.separated(
+                    controller: scrollCtrl,
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                    itemCount: videoEntries.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (ctx, listIdx) {
+                      final entry = videoEntries[listIdx];
+                      final slideIdx = entry.key;
+                      final path = entry.value;
+                      final duration =
+                          slideIdx < project.frameDurations.length
+                              ? project.frameDurations[slideIdx]
+                              : 3;
+                      final trimStart =
+                          project.videoTrimStartMsFor(slideIdx);
+                      final trimEnd = project.videoTrimEndMsFor(slideIdx);
+                      final trimmed = trimStart > 0 || trimEnd > 0;
+
+                      return _TrimPickerTile(
+                        slideNumber: slideIdx + 1,
+                        durationSec: duration,
+                        trimmed: trimmed,
+                        thumbFuture: _getThumb(path),
+                        onTap: () {
+                          Navigator.pop(context);
+                          context.push(
+                              '${AppRoutes.videoTrim}?slide=$slideIdx');
+                        },
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TrimEmptyState extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.videocam_off_rounded,
+                size: 48, color: AppColors.textDisabled),
+            const SizedBox(height: 12),
+            Text('Nothing to trim',
+                style: AppTextStyles.titleSmall,
+                textAlign: TextAlign.center),
+            const SizedBox(height: 4),
+            Text(
+              'Trim only applies to video clips. Add a video via '
+              '"Slides" to use this tool.',
+              style: AppTextStyles.bodySmall
+                  .copyWith(color: AppColors.textSecondary),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TrimPickerTile extends StatelessWidget {
+  const _TrimPickerTile({
+    required this.slideNumber,
+    required this.durationSec,
+    required this.trimmed,
+    required this.thumbFuture,
+    required this.onTap,
+  });
+
+  final int slideNumber;
+  final int durationSec;
+  final bool trimmed;
+  final Future<Uint8List?> thumbFuture;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.bgElevated,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: SizedBox(
+                  width: 56,
+                  height: 84,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      FutureBuilder<Uint8List?>(
+                        future: thumbFuture,
+                        builder: (_, snap) {
+                          if (snap.hasData && snap.data != null) {
+                            return Image.memory(snap.data!,
+                                fit: BoxFit.cover);
+                          }
+                          return Container(
+                            color: AppColors.bgSurfaceVariant,
+                            alignment: Alignment.center,
+                            child: const Icon(Icons.videocam_rounded,
+                                color: AppColors.textDisabled, size: 22),
+                          );
+                        },
+                      ),
+                      const Center(
+                        child: Icon(Icons.play_arrow_rounded,
+                            color: Colors.white70, size: 28),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text('Slide $slideNumber',
+                            style: AppTextStyles.titleSmall),
+                        if (trimmed) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color:
+                                  AppColors.primary.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              'Trimmed',
+                              style: AppTextStyles.labelSmall.copyWith(
+                                color: AppColors.primary,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text('$durationSec sec',
+                        style: AppTextStyles.labelSmall.copyWith(
+                            color: AppColors.textDisabled, fontSize: 11)),
+                  ],
+                ),
+              ),
+              const Icon(Icons.content_cut_rounded,
+                  color: AppColors.primary, size: 18),
+              const SizedBox(width: 4),
+            ],
+          ),
         ),
       ),
     );

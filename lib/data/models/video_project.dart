@@ -41,6 +41,12 @@ class VideoProject {
     this.frameCaptionEffects     = const [],
     this.frameCaptionUppercase   = const [],
     this.frameCaptionRotations   = const [],
+    this.frameVideoTrimStartMs   = const [],
+    this.frameVideoTrimEndMs     = const [],
+    this.frameVideoRotations     = const [],
+    this.frameVideoUseAudio      = const [],
+    this.frameVideoSpeed         = const [],
+    this.frameVideoCropRects     = const [],
     this.frameOfferBadgeStyles     = const [],
     this.frameOfferBadgeFillColors = const [],
     this.frameOfferBadgeTextColors = const [],
@@ -83,6 +89,12 @@ class VideoProject {
         frameCaptionEffects:    List.filled(assetPaths.length, ''),
         frameCaptionUppercase:  List.filled(assetPaths.length, false),
         frameCaptionRotations:  List.filled(assetPaths.length, 0),
+        frameVideoTrimStartMs:  List.filled(assetPaths.length, 0),
+        frameVideoTrimEndMs:    List.filled(assetPaths.length, 0),
+        frameVideoRotations:    List.filled(assetPaths.length, 0),
+        frameVideoUseAudio:     List.filled(assetPaths.length, false),
+        frameVideoSpeed:        List.filled(assetPaths.length, 1.0),
+        frameVideoCropRects:    List.filled(assetPaths.length, ''),
         frameOfferBadgeStyles:     List.filled(assetPaths.length, BadgeStyle.defaultStyleId),
         frameOfferBadgeFillColors: List.filled(assetPaths.length, 0),
         frameOfferBadgeTextColors: List.filled(assetPaths.length, 0),
@@ -115,6 +127,12 @@ class VideoProject {
         'frameCaptionEffects':    frameCaptionEffects,
         'frameCaptionUppercase':  frameCaptionUppercase,
         'frameCaptionRotations':  frameCaptionRotations,
+        'frameVideoTrimStartMs':  frameVideoTrimStartMs,
+        'frameVideoTrimEndMs':    frameVideoTrimEndMs,
+        'frameVideoRotations':    frameVideoRotations,
+        'frameVideoUseAudio':     frameVideoUseAudio,
+        'frameVideoSpeed':        frameVideoSpeed,
+        'frameVideoCropRects':    frameVideoCropRects,
         'frameOfferBadgeStyles':     frameOfferBadgeStyles,
         'frameOfferBadgeFillColors': frameOfferBadgeFillColors,
         'frameOfferBadgeTextColors': frameOfferBadgeTextColors,
@@ -175,6 +193,14 @@ class VideoProject {
       frameCaptionUppercase:  (j['frameCaptionUppercase'] as List?)
           ?.map((e) => e as bool).toList() ?? [],
       frameCaptionRotations:  intList('frameCaptionRotations'),
+      frameVideoTrimStartMs:  intList('frameVideoTrimStartMs'),
+      frameVideoTrimEndMs:    intList('frameVideoTrimEndMs'),
+      frameVideoRotations:    intList('frameVideoRotations'),
+      frameVideoUseAudio:     (j['frameVideoUseAudio'] as List?)
+          ?.map((e) => e as bool).toList() ?? [],
+      frameVideoSpeed:        (j['frameVideoSpeed'] as List?)
+          ?.map((e) => (e as num).toDouble()).toList() ?? [],
+      frameVideoCropRects:    strList('frameVideoCropRects'),
       frameOfferBadgeStyles:     strList('frameOfferBadgeStyles'),
       frameOfferBadgeFillColors: intList('frameOfferBadgeFillColors'),
       frameOfferBadgeTextColors: intList('frameOfferBadgeTextColors'),
@@ -256,6 +282,38 @@ class VideoProject {
   /// captions don't clip off the safe area.
   final List<int> frameCaptionRotations;
 
+  /// Per-frame trim start offset (milliseconds) inside the source video.
+  /// `0` for images and untrimmed videos — FFmpeg reads from the top.
+  final List<int> frameVideoTrimStartMs;
+
+  /// Per-frame trim end offset (milliseconds). `0` means "use the whole
+  /// clip from the start offset"; any non-zero value caps the playback
+  /// window at `[start, end)`.
+  final List<int> frameVideoTrimEndMs;
+
+  /// Per-video-slide rotation, in degrees. `0` / `90` / `180` / `270`.
+  /// Applied via an FFmpeg `transpose`/`hflip,vflip` filter in the
+  /// encoder. Ignored for non-video slides.
+  final List<int> frameVideoRotations;
+
+  /// Per-video-slide opt-in for mixing the source clip's audio into
+  /// the output. Default `false` — the encoder has always dropped
+  /// source audio and the output track is music + voiceover.
+  final List<bool> frameVideoUseAudio;
+
+  /// Per-video-slide playback speed multiplier. `1.0` = normal, `0.5` =
+  /// half (slow-mo), `2.0` = double (fast-forward). The encoder reads
+  /// `inputLen * speed` seconds from the source and applies
+  /// `setpts=PTS/speed` so the *output* slide duration stays at the
+  /// user's configured `frameDurations[i]`.
+  final List<double> frameVideoSpeed;
+
+  /// Per-video-slide crop rectangle encoded as `"x,y,w,h"` where each
+  /// value is a 0–1 fraction of the source frame. Empty string = no
+  /// crop (full frame). Applied via an FFmpeg `crop` filter before the
+  /// rotation + scale chain.
+  final List<String> frameVideoCropRects;
+
   /// Per-frame offer-badge style preset id (see `BadgeStyle.all`).
   /// Existing `frameOfferBadges` holds the label/text — the style controls
   /// shape, colours, and decoration.
@@ -318,6 +376,12 @@ class VideoProject {
     List<String>?   frameCaptionEffects,
     List<bool>?     frameCaptionUppercase,
     List<int>?      frameCaptionRotations,
+    List<int>?      frameVideoTrimStartMs,
+    List<int>?      frameVideoTrimEndMs,
+    List<int>?      frameVideoRotations,
+    List<bool>?     frameVideoUseAudio,
+    List<double>?   frameVideoSpeed,
+    List<String>?   frameVideoCropRects,
     List<String>?   frameOfferBadgeStyles,
     List<int>?      frameOfferBadgeFillColors,
     List<int>?      frameOfferBadgeTextColors,
@@ -355,6 +419,12 @@ class VideoProject {
         frameCaptionEffects:    frameCaptionEffects    ?? this.frameCaptionEffects,
         frameCaptionUppercase:  frameCaptionUppercase  ?? this.frameCaptionUppercase,
         frameCaptionRotations:  frameCaptionRotations  ?? this.frameCaptionRotations,
+        frameVideoTrimStartMs:  frameVideoTrimStartMs  ?? this.frameVideoTrimStartMs,
+        frameVideoTrimEndMs:    frameVideoTrimEndMs    ?? this.frameVideoTrimEndMs,
+        frameVideoRotations:    frameVideoRotations    ?? this.frameVideoRotations,
+        frameVideoUseAudio:     frameVideoUseAudio     ?? this.frameVideoUseAudio,
+        frameVideoSpeed:        frameVideoSpeed        ?? this.frameVideoSpeed,
+        frameVideoCropRects:    frameVideoCropRects    ?? this.frameVideoCropRects,
         frameOfferBadgeStyles:     frameOfferBadgeStyles     ?? this.frameOfferBadgeStyles,
         frameOfferBadgeFillColors: frameOfferBadgeFillColors ?? this.frameOfferBadgeFillColors,
         frameOfferBadgeTextColors: frameOfferBadgeTextColors ?? this.frameOfferBadgeTextColors,
@@ -398,6 +468,12 @@ static const _sentinel = Object();
         frameCaptionEffects:    frameCaptionEffects,
         frameCaptionUppercase:  frameCaptionUppercase,
         frameCaptionRotations:  frameCaptionRotations,
+        frameVideoTrimStartMs:  frameVideoTrimStartMs,
+        frameVideoTrimEndMs:    frameVideoTrimEndMs,
+        frameVideoRotations:    frameVideoRotations,
+        frameVideoUseAudio:     frameVideoUseAudio,
+        frameVideoSpeed:        frameVideoSpeed,
+        frameVideoCropRects:    frameVideoCropRects,
         frameOfferBadgeStyles:     frameOfferBadgeStyles,
         frameOfferBadgeFillColors: frameOfferBadgeFillColors,
         frameOfferBadgeTextColors: frameOfferBadgeTextColors,
@@ -471,6 +547,109 @@ static const _sentinel = Object();
         ? frameCaptionRotations[i]
         : 0;
     return raw.clamp(-15, 15);
+  }
+
+  int videoTrimStartMsFor(int i) =>
+      i >= 0 && i < frameVideoTrimStartMs.length
+          ? frameVideoTrimStartMs[i]
+          : 0;
+
+  int videoTrimEndMsFor(int i) => i >= 0 && i < frameVideoTrimEndMs.length
+      ? frameVideoTrimEndMs[i]
+      : 0;
+
+  VideoProject withFrameVideoTrim(int i, int startMs, int endMs) {
+    final startList = List<int>.from(
+        _padFrameList(frameVideoTrimStartMs, assetPaths.length, 0));
+    final endList = List<int>.from(
+        _padFrameList(frameVideoTrimEndMs, assetPaths.length, 0));
+    if (i >= 0 && i < startList.length) {
+      startList[i] = startMs;
+      endList[i] = endMs;
+    }
+    return copyWith(
+      frameVideoTrimStartMs: startList,
+      frameVideoTrimEndMs: endList,
+    );
+  }
+
+  /// Per-video-slide rotation, normalised to {0, 90, 180, 270}.
+  int videoRotationFor(int i) {
+    final raw = i >= 0 && i < frameVideoRotations.length
+        ? frameVideoRotations[i]
+        : 0;
+    final m = raw % 360;
+    if (m < 0) return (m + 360);
+    return m - (m % 90);
+  }
+
+  VideoProject withFrameVideoRotation(int i, int degrees) {
+    final list = List<int>.from(
+        _padFrameList(frameVideoRotations, assetPaths.length, 0));
+    if (i >= 0 && i < list.length) list[i] = degrees % 360;
+    return copyWith(frameVideoRotations: list);
+  }
+
+  bool videoUseAudioFor(int i) =>
+      i >= 0 && i < frameVideoUseAudio.length && frameVideoUseAudio[i];
+
+  VideoProject withFrameVideoUseAudio(int i, bool enabled) {
+    final list = List<bool>.from(
+        _padFrameList(frameVideoUseAudio, assetPaths.length, false));
+    if (i >= 0 && i < list.length) list[i] = enabled;
+    return copyWith(frameVideoUseAudio: list);
+  }
+
+  /// Per-video-slide speed multiplier. Default 1.0. Clamped to the
+  /// supported range {0.5, 1.0, 2.0} by the setter; accessor returns
+  /// 1.0 for any missing / zero entry.
+  double videoSpeedFor(int i) {
+    final raw = i >= 0 && i < frameVideoSpeed.length
+        ? frameVideoSpeed[i]
+        : 1.0;
+    if (raw <= 0) return 1.0;
+    return raw;
+  }
+
+  VideoProject withFrameVideoSpeed(int i, double speed) {
+    final list = List<double>.from(
+        _padFrameList(frameVideoSpeed, assetPaths.length, 1.0));
+    if (i >= 0 && i < list.length) list[i] = speed <= 0 ? 1.0 : speed;
+    return copyWith(frameVideoSpeed: list);
+  }
+
+  /// Decoded crop rect for video slide [i] as `[x, y, w, h]` in [0, 1].
+  /// Returns full-frame `[0, 0, 1, 1]` when nothing is stored.
+  List<double> videoCropRectFor(int i) {
+    final s = i >= 0 && i < frameVideoCropRects.length
+        ? frameVideoCropRects[i]
+        : '';
+    if (s.isEmpty) return const [0.0, 0.0, 1.0, 1.0];
+    final parts = s.split(',');
+    if (parts.length != 4) return const [0.0, 0.0, 1.0, 1.0];
+    try {
+      return parts.map((p) => double.parse(p).clamp(0.0, 1.0)).toList();
+    } catch (_) {
+      return const [0.0, 0.0, 1.0, 1.0];
+    }
+  }
+
+  bool videoHasCustomCropFor(int i) {
+    final r = videoCropRectFor(i);
+    return r[0] > 0.0001 || r[1] > 0.0001 ||
+        r[2] < 0.9999 || r[3] < 0.9999;
+  }
+
+  VideoProject withFrameVideoCropRect(int i,
+      {required double x, required double y,
+      required double w, required double h}) {
+    final list = List<String>.from(
+        _padFrameList(frameVideoCropRects, assetPaths.length, ''));
+    final cleared = x == 0 && y == 0 && w == 1 && h == 1;
+    if (i >= 0 && i < list.length) {
+      list[i] = cleared ? '' : '$x,$y,$w,$h';
+    }
+    return copyWith(frameVideoCropRects: list);
   }
 
   String offerBadgeStyleIdFor(int i) =>
@@ -642,6 +821,12 @@ static const _sentinel = Object();
     required List<String>  frameCaptionEffects,
     required List<bool>    frameCaptionUppercase,
     required List<int>     frameCaptionRotations,
+    required List<int>     frameVideoTrimStartMs,
+    required List<int>     frameVideoTrimEndMs,
+    required List<int>     frameVideoRotations,
+    required List<bool>    frameVideoUseAudio,
+    required List<double>  frameVideoSpeed,
+    required List<String>  frameVideoCropRects,
     required List<String>  frameOfferBadgeStyles,
     required List<int>     frameOfferBadgeFillColors,
     required List<int>     frameOfferBadgeTextColors,
@@ -669,6 +854,12 @@ static const _sentinel = Object();
     frameCaptionEffects:    frameCaptionEffects,
     frameCaptionUppercase:  frameCaptionUppercase,
     frameCaptionRotations:  frameCaptionRotations,
+    frameVideoTrimStartMs:  frameVideoTrimStartMs,
+    frameVideoTrimEndMs:    frameVideoTrimEndMs,
+    frameVideoRotations:    frameVideoRotations,
+    frameVideoUseAudio:     frameVideoUseAudio,
+    frameVideoSpeed:        frameVideoSpeed,
+    frameVideoCropRects:    frameVideoCropRects,
     frameOfferBadgeStyles:     frameOfferBadgeStyles,
     frameOfferBadgeFillColors: frameOfferBadgeFillColors,
     frameOfferBadgeTextColors: frameOfferBadgeTextColors,
@@ -737,6 +928,12 @@ static const _sentinel = Object();
       frameCaptionEffects:    without(_padFrameList(frameCaptionEffects, assetPaths.length, '')),
       frameCaptionUppercase:  without(_padFrameList(frameCaptionUppercase, assetPaths.length, false)),
       frameCaptionRotations:  without(_padFrameList(frameCaptionRotations, assetPaths.length, 0)),
+      frameVideoTrimStartMs:  without(_padFrameList(frameVideoTrimStartMs, assetPaths.length, 0)),
+      frameVideoTrimEndMs:    without(_padFrameList(frameVideoTrimEndMs, assetPaths.length, 0)),
+      frameVideoRotations:    without(_padFrameList(frameVideoRotations, assetPaths.length, 0)),
+      frameVideoUseAudio:     without(_padFrameList(frameVideoUseAudio, assetPaths.length, false)),
+      frameVideoSpeed:        without(_padFrameList(frameVideoSpeed, assetPaths.length, 1.0)),
+      frameVideoCropRects:    without(_padFrameList(frameVideoCropRects, assetPaths.length, '')),
       frameOfferBadgeStyles:     without(_padFrameList(frameOfferBadgeStyles, assetPaths.length, BadgeStyle.defaultStyleId)),
       frameOfferBadgeFillColors: without(_padFrameList(frameOfferBadgeFillColors, assetPaths.length, 0)),
       frameOfferBadgeTextColors: without(_padFrameList(frameOfferBadgeTextColors, assetPaths.length, 0)),
@@ -771,6 +968,12 @@ static const _sentinel = Object();
       frameCaptionEffects:    dup(_padFrameList(frameCaptionEffects, assetPaths.length, ''), ''),
       frameCaptionUppercase:  dup(_padFrameList(frameCaptionUppercase, assetPaths.length, false), false),
       frameCaptionRotations:  dup(_padFrameList(frameCaptionRotations, assetPaths.length, 0), 0),
+      frameVideoTrimStartMs:  dup(_padFrameList(frameVideoTrimStartMs, assetPaths.length, 0), 0),
+      frameVideoTrimEndMs:    dup(_padFrameList(frameVideoTrimEndMs, assetPaths.length, 0), 0),
+      frameVideoRotations:    dup(_padFrameList(frameVideoRotations, assetPaths.length, 0), 0),
+      frameVideoUseAudio:     dup(_padFrameList(frameVideoUseAudio, assetPaths.length, false), false),
+      frameVideoSpeed:        dup(_padFrameList(frameVideoSpeed, assetPaths.length, 1.0), 1.0),
+      frameVideoCropRects:    dup(_padFrameList(frameVideoCropRects, assetPaths.length, ''), ''),
       frameOfferBadgeStyles:     dup(_padFrameList(frameOfferBadgeStyles, assetPaths.length, BadgeStyle.defaultStyleId), BadgeStyle.defaultStyleId),
       frameOfferBadgeFillColors: dup(_padFrameList(frameOfferBadgeFillColors, assetPaths.length, 0), 0),
       frameOfferBadgeTextColors: dup(_padFrameList(frameOfferBadgeTextColors, assetPaths.length, 0), 0),
@@ -807,6 +1010,12 @@ static const _sentinel = Object();
       frameCaptionEffects:    ins(_padFrameList(frameCaptionEffects, assetPaths.length, ''), ''),
       frameCaptionUppercase:  ins(_padFrameList(frameCaptionUppercase, assetPaths.length, false), false),
       frameCaptionRotations:  ins(_padFrameList(frameCaptionRotations, assetPaths.length, 0), 0),
+      frameVideoTrimStartMs:  ins(_padFrameList(frameVideoTrimStartMs, assetPaths.length, 0), 0),
+      frameVideoTrimEndMs:    ins(_padFrameList(frameVideoTrimEndMs, assetPaths.length, 0), 0),
+      frameVideoRotations:    ins(_padFrameList(frameVideoRotations, assetPaths.length, 0), 0),
+      frameVideoUseAudio:     ins(_padFrameList(frameVideoUseAudio, assetPaths.length, false), false),
+      frameVideoSpeed:        ins(_padFrameList(frameVideoSpeed, assetPaths.length, 1.0), 1.0),
+      frameVideoCropRects:    ins(_padFrameList(frameVideoCropRects, assetPaths.length, ''), ''),
       frameOfferBadgeStyles:     ins(_padFrameList(frameOfferBadgeStyles, assetPaths.length, BadgeStyle.defaultStyleId), BadgeStyle.defaultStyleId),
       frameOfferBadgeFillColors: ins(_padFrameList(frameOfferBadgeFillColors, assetPaths.length, 0), 0),
       frameOfferBadgeTextColors: ins(_padFrameList(frameOfferBadgeTextColors, assetPaths.length, 0), 0),
@@ -848,6 +1057,12 @@ static const _sentinel = Object();
       frameCaptionEffects:    moved(_padFrameList(frameCaptionEffects, assetPaths.length, '')),
       frameCaptionUppercase:  moved(_padFrameList(frameCaptionUppercase, assetPaths.length, false)),
       frameCaptionRotations:  moved(_padFrameList(frameCaptionRotations, assetPaths.length, 0)),
+      frameVideoTrimStartMs:  moved(_padFrameList(frameVideoTrimStartMs, assetPaths.length, 0)),
+      frameVideoTrimEndMs:    moved(_padFrameList(frameVideoTrimEndMs, assetPaths.length, 0)),
+      frameVideoRotations:    moved(_padFrameList(frameVideoRotations, assetPaths.length, 0)),
+      frameVideoUseAudio:     moved(_padFrameList(frameVideoUseAudio, assetPaths.length, false)),
+      frameVideoSpeed:        moved(_padFrameList(frameVideoSpeed, assetPaths.length, 1.0)),
+      frameVideoCropRects:    moved(_padFrameList(frameVideoCropRects, assetPaths.length, '')),
       frameOfferBadgeStyles:     moved(_padFrameList(frameOfferBadgeStyles, assetPaths.length, BadgeStyle.defaultStyleId)),
       frameOfferBadgeFillColors: moved(_padFrameList(frameOfferBadgeFillColors, assetPaths.length, 0)),
       frameOfferBadgeTextColors: moved(_padFrameList(frameOfferBadgeTextColors, assetPaths.length, 0)),

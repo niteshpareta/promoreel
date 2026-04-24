@@ -7,6 +7,7 @@ import '../../features/caption/caption_wizard_screen.dart';
 import '../../features/style/style_picker_screen.dart';
 import '../../features/review/review_screen.dart';
 import '../../features/editor/editor_screen.dart';
+import '../../features/editor/video_trim_screen.dart';
 import '../../features/export/export_screen.dart';
 import '../../features/branding/branding_screen.dart';
 import '../../features/player/video_player_screen.dart';
@@ -26,6 +27,7 @@ abstract final class AppRoutes {
   static const player       = '/player';
   static const paywall      = '/paywall';
   static const catalog      = '/catalog';
+  static const videoTrim    = '/video-trim';
 }
 
 // Keep for any code that still references appRouter directly
@@ -50,6 +52,13 @@ GoRouter buildRouter({bool showOnboarding = false}) => GoRouter(
       ),
     ),
     GoRoute(path: AppRoutes.catalog, builder: (ctx, s) => const CatalogScreen()),
+    GoRoute(
+      path: AppRoutes.videoTrim,
+      builder: (ctx, s) => VideoTrimScreen(
+        slideIndex:
+            int.tryParse(s.uri.queryParameters['slide'] ?? '0') ?? 0,
+      ),
+    ),
     GoRoute(
       path: AppRoutes.paywall,
       builder: (ctx, s) => PaywallScreen(

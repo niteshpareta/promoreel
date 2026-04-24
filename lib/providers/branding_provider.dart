@@ -111,14 +111,6 @@ class _ActiveKitNotifier extends StateNotifier<BrandingPreset> {
       _ref.read(brandKitsProvider.notifier).save(preset);
 
   Future<void> updateLogoPath(String? path) {
-    final updated = BrandingPreset(
-      id: state.id,
-      name: state.name,
-      businessName: state.businessName,
-      phoneNumber: state.phoneNumber,
-      address: state.address,
-      logoPath: path,
-    );
-    return save(updated);
+    return save(state.copyWith(logoPath: path));
   }
 }
